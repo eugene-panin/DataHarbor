@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seaweedfs
+  labels:
+    app: seaweedfs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seaweedfs
+  template:
+    metadata:
+      labels:
+        app: seaweedfs
+    spec:
+      containers:
+        - name: seaweedfs
+          image: chrislusf/seaweedfs:latest
+          args: ["server", "-s3", "-dir=/data"]
+          ports:
+            - containerPort: 8333
+            - containerPort: 9333
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweedfs-service
+  labels:
+    app: seaweedfs
+spec:
+  ports:
+    - name: s3-api
+      port: 8333
+      targetPort: 8333
+    - name: master-ui
+      port: 9333
+      targetPort: 9333
+  selector:
+    app: seaweedfs

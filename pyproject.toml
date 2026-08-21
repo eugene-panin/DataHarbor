@@ -1,0 +1,48 @@
+[project]
+name = "dataharbor"
+version = "1.0.0"
+description = "DataHarbor Core Platform CLI & Orchestration Engine"
+authors = [{ name = "Eugene Panin", email = "admin@dataharbor.local" }]
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "python-dotenv>=1.0.1",
+    "pydantic>=2.7.0",
+    "aioboto3==13.0.1",
+    "psycopg2-binary>=2.9.9",
+    "clickhouse-connect>=0.7.0",
+    "qdrant-client>=1.9.0",
+    "boto3>=1.34.0",
+    "beautifulsoup4>=4.12.3",
+    "dagster>=1.6.5",
+    "dagster-webserver>=1.6.5",
+    "dagster-postgres>=0.23.0",
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+harbor = "apps.cli.main:app"
+
+[project.optional-dependencies]
+ml = [
+    "torch>=2.0.0",
+    "faster-whisper>=1.0.0",
+    "easyocr>=1.7.0",
+    "sentence-transformers>=2.2.0",
+    "hdbscan>=0.8.0",
+    "numpy>=1.24.0",
+    "requests>=2.31.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["apps*", "bundles*", "extractors*"]
+exclude = ["tests*", "analysis*", "deploy*", "output*"]
+
+[tool.uv]
+package = true

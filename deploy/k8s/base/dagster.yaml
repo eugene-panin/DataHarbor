@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dagster
+  labels:
+    app: dagster
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dagster
+  template:
+    metadata:
+      labels:
+        app: dagster
+    spec:
+      containers:
+        - name: dagster-webserver
+          image: dataharbor-dagster:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "mkdir -p /tmp/dagster_home && cp apps/dagster_app/dagster.yaml /tmp/dagster_home/dagster.yaml && python -m apps.dagster_app.run_dev"]
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: app-config
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1024Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dagster-service
+  labels:
+    app: dagster
+spec:
+  ports:
+    - port: 3000
+      targetPort: 3000
+  selector:
+    app: dagster

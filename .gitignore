@@ -1,0 +1,86 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+.venv/
+ENV/
+
+# Environment variables
+.env
+.env.local
+
+# Dagster local storage & state
+.dagster/
+dagster_home/
+*.dagster
+
+# Custom bundles stay local/private (platform ships only bundle infrastructure)
+bundles/*
+!bundles/__init__.py
+!bundles/loader.py
+!bundles/validator.py
+!bundles/distributor.py
+!bundles/scaffold.py
+!bundles/cli.py
+!bundles/doctor.py
+!bundles/plugin_contract.py
+
+# Custom extractors stay local/private (platform ships demo_site + infrastructure)
+extractors/*
+!extractors/__init__.py
+!extractors/validator.py
+!extractors/distributor.py
+!extractors/requirements.py
+!extractors/scaffold.py
+!extractors/demo_site/
+**/__pycache__/
+*.pyc
+
+# Playwright & Browsers
+/ms-playwright/
+test-results/
+.playwright-cli/
+output/
+
+# Scratch & Exports
+scratch/
+exports/
+backups/
+analysis/
+*.md
+!README.md
+!README.ru.md
+!README.uk.md
+!README.es.md
+!README.tr.md
+!AGENTS.md
+!.agents/**/*.md
+
+# IDE / OS / local tooling
+.idea/
+.vscode/
+.cursor/
+.cursorindexingignore
+.specstory/
+*.swp
+*.swo
+.DS_Store

@@ -1,0 +1,10 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+exports
+scratch
+downloads
+.dagster
+dagster_home

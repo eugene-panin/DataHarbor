@@ -1,0 +1,210 @@
+import os
+import re
+import glob
+import json
+import logging
+from typing import Dict, Any, List, Tuple
+from datetime import datetime
+from apps.db.connection import get_db_cursor
+from apps.observability.metrics import init_metrics_db, record_scraper_execution
+from apps.observability.alerts import send_scraper_alert
+
+logger = logging.getLogger(__name__)
+
+# Dynamic Global Fallback Thresholds from .env
+DEFAULT_STALENESS_SLA_HOURS = int(os.getenv("OBSERVABILITY_STALENESS_SLA_HOURS", "12"))
+DEFAULT_ANOMALY_THRESHOLD_RATIO = float(os.getenv("OBSERVABILITY_ANOMALY_THRESHOLD_RATIO", "0.3"))
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BUNDLES_DIR = os.path.join(PROJECT_ROOT, "bundles")
+
+STDOUT_ERROR_PATTERNS = [
+    r"\[ERROR\]",
+    r"\[CRITICAL\]",
+    r"OperationalError",
+    r"NameError",
+    r"KeyError",
+    r"AttributeError",
+    r"Authentication failed",
+    r"no password supplied",
+    r"ConnectionRefusedError",
+    r"Connection refused",
+    r"Cloudflare challenge or 403"
+]
+
+class ScraperHealthChecker:
+    """Performs automated anomaly detection, SLA staleness checks, Dagster stdout log monitoring, and health audits."""
+
+    def __init__(self):
+        init_metrics_db()
+
+    def get_bundle_observability_settings(self, bundle_name: str) -> Tuple[int, float]:
+        """Loads SLA hours and anomaly ratio threshold from manifest.json or defaults to .env."""
+        sla_hours = DEFAULT_STALENESS_SLA_HOURS
+        anomaly_ratio = DEFAULT_ANOMALY_THRESHOLD_RATIO
+
+        manifest_path = os.path.join(BUNDLES_DIR, bundle_name, "manifest.json")
+        if os.path.exists(manifest_path):
+            try:
+                with open(manifest_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                obs = data.get("observability", {})
+                if "staleness_sla_hours" in obs:
+                    sla_hours = int(obs["staleness_sla_hours"])
+                if "anomaly_threshold_ratio" in obs:
+                    anomaly_ratio = float(obs["anomaly_threshold_ratio"])
+            except Exception as e:
+                logger.warning(f"Could not parse manifest observability settings for '{bundle_name}': {e}")
+
+        return sla_hours, anomaly_ratio
+
+    def scan_dagster_stdout_logs(self) -> Dict[str, List[str]]:
+        """Scans Dagster process stdout/stderr log files for active errors and matches them to bundles."""
+        dagster_home = os.getenv("DAGSTER_HOME", "/tmp/dagster_home")
+        log_patterns = [
+            f"{dagster_home}/**/*.log",
+            "/tmp/dagster_home/**/*.log",
+            "/opt/dagster/**/*.log"
+        ]
+
+        found_logs = []
+        for pat in log_patterns:
+            found_logs.extend(glob.glob(pat, recursive=True))
+
+        bundle_stdout_errors = {}
+        combined_regex = re.compile("|".join(STDOUT_ERROR_PATTERNS), re.IGNORECASE)
+
+        for log_file in found_logs:
+            try:
+                if not os.path.isfile(log_file) or os.path.getsize(log_file) == 0:
+                    continue
+                
+                with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                    # Read last 300 lines of process stdout/stderr
+                    lines = f.readlines()[-300:]
+
+                for line in lines:
+                    if combined_regex.search(line):
+                        # Attempt to resolve bundle context from log text or default to active bundle
+                        matched_bundle = "unknown_bundle"
+                        if "bundle" in line:
+                            b_match = re.search(r"bundle[s]?/([a-zA-Z0-9_]+)", line)
+                            if b_match:
+                                matched_bundle = b_match.group(1)
+
+                        clean_err = line.strip()[:140]
+                        if matched_bundle not in bundle_stdout_errors:
+                            bundle_stdout_errors[matched_bundle] = []
+
+                        if clean_err not in bundle_stdout_errors[matched_bundle]:
+                            bundle_stdout_errors[matched_bundle].append(clean_err)
+            except Exception as e:
+                logger.debug(f"Could not scan log file '{log_file}': {e}")
+
+        return bundle_stdout_errors
+
+    def cleanup_orphaned_dagster_runs(self):
+        """Automatically checks Dagster instance storage for orphaned runs stuck in STARTED state and cancels them."""
+        try:
+            from dagster import DagsterInstance, DagsterRunStatus
+            instance = DagsterInstance.get()
+            runs = instance.get_runs()
+            for r in runs:
+                if r.status in [DagsterRunStatus.STARTED, DagsterRunStatus.STARTING, DagsterRunStatus.QUEUED]:
+                    # Check if run has been stuck over 30 minutes
+                    if r.update_timestamp and (datetime.now().timestamp() - r.update_timestamp) > 1800:
+                        logger.warning(f"⚡ Observability Cleaner: Canceling orphaned Dagster run {r.run_id[:8]} (stuck >30m)")
+                        instance.report_run_canceled(r)
+        except Exception as e:
+            logger.debug(f"Could not audit/cancel orphaned Dagster runs: {e}")
+
+    def check_all_scrapers_health(self) -> List[Dict[str, Any]]:
+        """Audits all scrapers using connection pool, Dagster process stdout monitoring, and per-bundle thresholds."""
+        self.cleanup_orphaned_dagster_runs()
+        rows = []
+        try:
+            with get_db_cursor(commit=False) as cursor:
+                cursor.execute("SELECT * FROM v_scraper_health_status;")
+                rows = cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Error reading scraper health status from DB pool: {e}")
+            rows = []
+
+        # Scan Dagster process stdout/stderr logs
+        stdout_errors_by_bundle = self.scan_dagster_stdout_logs()
+
+        health_results = []
+        now = datetime.now()
+
+        # Gather list of all bundles from directory if DB rows empty
+        all_bundle_names = set([r["bundle_name"] for r in rows]) if rows else set()
+        if os.path.exists(BUNDLES_DIR):
+            for item in os.listdir(BUNDLES_DIR):
+                if os.path.isdir(os.path.join(BUNDLES_DIR, item)) and not item.startswith(".") and not item.startswith("__"):
+                    all_bundle_names.add(item)
+
+        for bundle_name in sorted(all_bundle_names):
+            r = next((row for row in rows if row["bundle_name"] == bundle_name), {})
+            total_runs = r.get("total_runs_24h") or 0
+            success_runs = r.get("success_runs_24h") or 0
+            anomaly_runs = r.get("anomaly_runs_24h") or 0
+            last_success = r.get("last_success_timestamp")
+
+            sla_hours, anomaly_threshold_ratio = self.get_bundle_observability_settings(bundle_name)
+
+            status = "HEALTHY"
+            issues = []
+
+            # Check 1: Dagster Process STDOUT / STDERR Errors
+            if bundle_name in stdout_errors_by_bundle and stdout_errors_by_bundle[bundle_name]:
+                status = "DEGRADED"
+                top_err = stdout_errors_by_bundle[bundle_name][0]
+                issues.append(f"Dagster process STDOUT error detected: '{top_err}'")
+                
+                # Record stdout telemetry error in database for AI Remediation tracking
+                record_scraper_execution(
+                    bundle_name=bundle_name,
+                    status="FAILED",
+                    items_scraped=0,
+                    error_message=f"STDOUT: {top_err}"
+                )
+                send_scraper_alert(bundle_name, "DAGSTER_STDOUT_ERROR", issues[-1])
+
+            # Check 2: Zero-Row / Anomaly Rate
+            if anomaly_runs > 0 and (anomaly_runs / max(1, total_runs)) >= anomaly_threshold_ratio:
+                status = "DEGRADED"
+                issues.append(
+                    f"High anomaly rate ({anomaly_runs}/{total_runs} runs returned 0 items, threshold: {int(anomaly_threshold_ratio*100)}%). Target HTML selector changed?"
+                )
+                send_scraper_alert(bundle_name, "ZERO_ROWS_ANOMALY", issues[-1])
+
+            # Check 3: Staleness SLA
+            if last_success:
+                last_succ_naive = last_success.replace(tzinfo=None)
+                hours_since_success = (now - last_succ_naive).total_seconds() / 3600.0
+                if hours_since_success > sla_hours:
+                    status = "CRITICAL"
+                    issues.append(
+                        f"Staleness SLA breached! Last successful run was {hours_since_success:.1f} hours ago (SLA: {sla_hours}h)."
+                    )
+                    send_scraper_alert(bundle_name, "SLA_STALENESS_EXCEEDED", issues[-1])
+
+            health_results.append({
+                "bundle_name": bundle_name,
+                "status": status,
+                "total_runs_24h": total_runs,
+                "success_runs_24h": success_runs,
+                "items_scraped_24h": r.get("total_items_scraped_24h") or 0,
+                "last_success_timestamp": str(last_success) if last_success else "Never",
+                "configured_sla_hours": sla_hours,
+                "configured_anomaly_ratio": anomaly_threshold_ratio,
+                "stdout_errors": stdout_errors_by_bundle.get(bundle_name, []),
+                "issues": issues
+            })
+
+        return health_results
+
+if __name__ == "__main__":
+    checker = ScraperHealthChecker()
+    report = checker.check_all_scrapers_health()
+    print(json.dumps(report, indent=2))

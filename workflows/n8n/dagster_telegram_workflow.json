@@ -1,0 +1,55 @@
+{
+  "id": "10000000-0000-0000-0000-000000000001",
+  "name": "DataHarbor Dagster Telegram Notifications",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dataharbor-pipeline-events",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "id": "node-webhook",
+      "name": "Dagster Webhook Trigger"
+    },
+    {
+      "parameters": {
+        "chatId": "-1004353811042",
+        "text": "=🚢 <b>DataHarbor Pipeline Event: {{ $json.body.event }}</b>\n\n<b>Stage:</b> {{ $json.body.payload.stage }}\n<b>Status:</b> {{ $json.body.payload.status || 'OK' }}\n\n📊 <b>Metrics:</b>\n- Agencies Scraped: {{ $json.body.payload.agencies_scraped || 0 }}\n- DB Upserted: {{ $json.body.payload.records_upserted || 0 }}\n- Enriched Websites: {{ $json.body.payload.websites_enriched || 0 }}\n\n<i>Time: {{ $json.body.timestamp }}</i>",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ],
+      "id": "node-telegram",
+      "name": "Send Telegram Notification"
+    }
+  ],
+  "connections": {
+    "Dagster Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

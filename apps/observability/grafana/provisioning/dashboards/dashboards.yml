@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: DataHarbor-Core-Dashboards
+    folder: DataHarbor Platform
+    type: file
+    disableDeletion: false
+    editable: true
+    allowUiUpdates: true
+    updateIntervalSeconds: 1
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

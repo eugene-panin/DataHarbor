@@ -1,0 +1,19 @@
+apiVersion: 1
+
+deleteDatasources:
+  - name: DataHarbor-ClickHouse
+    orgId: 1
+
+datasources:
+  - name: DataHarbor-ClickHouse
+    type: grafana-clickhouse-datasource
+    uid: DataHarbor-ClickHouse
+    access: proxy
+    isDefault: false
+    jsonData:
+      host: clickhouse
+      port: 9000
+      username: default
+      password: ""
+      defaultDatabase: default
+      protocol: native

@@ -1,0 +1,160 @@
+services:
+  # 1. PostgreSQL Database (Relational storage & UPSERT sink)
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: dataharbor_postgres
+    environment:
+      - POSTGRES_DB=dataharbor
+      - POSTGRES_USER=dataharbor
+      - POSTGRES_PASSWORD=dataharbor
+    ports:
+      - "54320:5432"  # Host Port 54320 -> Container 5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dataharbor -d dataharbor"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # 2. Dagster Webserver & Orchestrator
+  dagster:
+    build: .
+    container_name: dataharbor_dagster
+    command: sh -c "mkdir -p /tmp/dagster_home && cp apps/dagster_app/dagster.yaml /tmp/dagster_home/dagster.yaml && python -m apps.dagster_app.run_dev"
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - S3_ENDPOINT_URL=http://seaweedfs:8333
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=dataharbor
+      - POSTGRES_USER=dataharbor
+      - POSTGRES_PASSWORD=dataharbor
+      - PROXY_URL=${PROXY_URL}
+      - PROXY_LIST=${PROXY_LIST}
+      - DAGSTER_HOME=/tmp/dagster_home
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-dataharbor}
+      - CLICKHOUSE_HOST=clickhouse
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - NOTIFY_WEBHOOK_URL=${NOTIFY_WEBHOOK_URL:-}
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-}
+      - N8N_ALERT_WEBHOOK_URL=${N8N_ALERT_WEBHOOK_URL:-}
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      clickhouse:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 3. SeaweedFS (S3 Object Storage, Master UI & Filer)
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    container_name: dataharbor_seaweedfs
+    command: "server -s3 -filer -dir=/data"
+    ports:
+      - "8334:8333"  # S3 API Host Port
+      - "9334:9333"  # Master Web UI Host Port
+      - "8888:8888"  # Interactive Web Filer Explorer
+    volumes:
+      - seaweed_data:/data
+    restart: unless-stopped
+
+  # 4. n8n (OPTIONAL) — no-code automation hub
+  # Start with: docker compose --profile n8n up -d
+  # Or: harbor up --compose --with-n8n
+  n8n:
+    profiles: ["n8n"]
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: dataharbor_n8n
+    ports:
+      - "56780:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:56780/
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_INSTANCE_OWNER_MANAGED_BY_ENV=true
+      - N8N_INSTANCE_OWNER_EMAIL=admin@dataharbor.local
+      - N8N_INSTANCE_OWNER_PASSWORD_HASH=$$2a$$10$$xTXrj1FtAz8bpHA8/OSA..91FlQixTy7xZfIm4nx5PLSfFTVKktm6
+      - N8N_INSTANCE_OWNER_FIRST_NAME=Admin
+      - N8N_INSTANCE_OWNER_LAST_NAME=User
+      - GENERIC_TIMEZONE=UTC
+    volumes:
+      - n8n_data:/home/node/.n8n
+    restart: unless-stopped
+
+  # 5. ClickHouse (OLAP Analytics Warehouse)
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: dataharbor_clickhouse
+    ports:
+      - "8123:8123"  # HTTP Interface
+      - "9000:9000"  # Native Client Interface
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # 6. Qdrant (Vector search / RAG)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: dataharbor_qdrant
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # 7. Grafana (Observability dashboards)
+  grafana:
+    image: grafana/grafana-enterprise:latest
+    container_name: dataharbor_grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+    volumes:
+      - ./apps/observability/grafana/provisioning:/etc/grafana/provisioning
+      - ./bundles:/etc/grafana/provisioning/dashboards/bundles:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  seaweed_data:
+  postgres_data:
+  n8n_data:
+  clickhouse_data:
+  qdrant_data:
+  grafana_data:
