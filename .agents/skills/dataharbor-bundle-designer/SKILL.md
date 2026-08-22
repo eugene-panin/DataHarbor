@@ -25,6 +25,23 @@ bundles/<bundle_name>/
 
 ---
 
+## 🧱 1b. Scaffold templates (`harbor bundle new --template`)
+
+| Template | Use case | Files |
+|----------|----------|-------|
+| `default` | Ingest: fetch → scrape → store → Dagster | manifest, assets, fetch, scraper, db |
+| `ml` | Train/RAG from S3; no scrape | manifest, assets, db (run registry) |
+| `etl` | Transform/load only (data already in platform) | manifest, assets, db |
+| `dagster` | Minimal code location (assets only) | manifest, assets |
+
+```bash
+harbor bundle templates
+harbor bundle new my_leads --template default --extractors demo_site
+harbor bundle new my_ml --template ml
+```
+
+---
+
 ## 📋 2. Mandatory File Specs & Code Templates
 
 ### A. Manifest File (`manifest.json`)

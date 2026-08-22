@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def get_qdrant_client():
         return None
 
     try:
-        kwargs: Dict[str, Any] = {"url": _resolve_url()}
+        kwargs: dict[str, Any] = {"url": _resolve_url()}
         if QDRANT_API_KEY:
             kwargs["api_key"] = QDRANT_API_KEY
         client = QdrantClient(**kwargs)
@@ -77,7 +78,7 @@ def ensure_collection(
 
 
 def upsert_vectors(
-    points: Sequence[Dict[str, Any]],
+    points: Sequence[dict[str, Any]],
     collection_name: str = QDRANT_COLLECTION,
 ) -> bool:
     """Upsert points: each item needs ``id``, ``vector``, optional ``payload``."""
@@ -108,12 +109,12 @@ def upsert_vectors(
 
 
 def search_vectors(
-    query_vector: List[float],
+    query_vector: list[float],
     *,
     collection_name: str = QDRANT_COLLECTION,
     limit: int = 10,
-    score_threshold: Optional[float] = None,
-) -> List[Dict[str, Any]]:
+    score_threshold: float | None = None,
+) -> list[dict[str, Any]]:
     """Search nearest vectors; returns id/score/payload dicts."""
     client = get_qdrant_client()
     if not client:

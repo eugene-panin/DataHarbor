@@ -1,15 +1,15 @@
 """Backward-compatible pipeline event helper (optional webhooks only)."""
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from apps.notifications.notifier import send_webhook_event
 
 
 def send_n8n_event(
     event_type: str,
-    payload: Dict[str, Any],
-    webhook_url: Optional[str] = None,
+    payload: dict[str, Any],
+    webhook_url: str | None = None,
 ) -> bool:
     """
     Dispatch a pipeline event to configured webhooks.

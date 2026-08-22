@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -13,7 +12,7 @@ class ProxyManager:
     """Resolves an optional egress proxy from environment variables."""
 
     def __init__(self) -> None:
-        self._proxies: List[str] = []
+        self._proxies: list[str] = []
         self._load_proxies()
 
     def _load_proxies(self) -> None:
@@ -32,7 +31,7 @@ class ProxyManager:
         elif single_proxy:
             self._proxies = [single_proxy.strip()]
 
-    def get_proxy_url(self, session_id: Optional[str] = None) -> Optional[str]:
+    def get_proxy_url(self, session_id: str | None = None) -> str | None:
         """Return a configured proxy URL, or None when unset.
 
         ``session_id`` is accepted for API compatibility; Core returns the
@@ -44,7 +43,7 @@ class ProxyManager:
             return None
         return self._proxies[0]
 
-    def get_browser_proxy(self, session_id: Optional[str] = None) -> Optional[Dict[str, str]]:
+    def get_browser_proxy(self, session_id: str | None = None) -> dict[str, str] | None:
         """Return browser-style proxy dict ({server, username?, password?}), or None.
 
         Useful for bundle-owned Playwright/Chromium clients. Core does not ship Playwright.
@@ -68,7 +67,7 @@ class ProxyManager:
     # Back-compat alias for older bundle code.
     get_playwright_proxy = get_browser_proxy
 
-    def get_http_proxies(self, session_id: Optional[str] = None) -> Optional[Dict[str, str]]:
+    def get_http_proxies(self, session_id: str | None = None) -> dict[str, str] | None:
         """Return proxies dict for urllib / requests-style clients."""
         proxy_url = self.get_proxy_url(session_id=session_id)
         if not proxy_url:

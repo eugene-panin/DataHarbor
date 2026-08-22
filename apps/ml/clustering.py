@@ -1,9 +1,9 @@
 import logging
-from typing import List, Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-def cluster_embeddings(vectors: List[List[float]], min_cluster_size: int = 2) -> Dict[str, Any]:
+def cluster_embeddings(vectors: list[list[float]], min_cluster_size: int = 2) -> dict[str, Any]:
     """Cluster vector embeddings with HDBSCAN. Requires ``uv sync --extra ml``."""
     from apps.ml import require_ml
 

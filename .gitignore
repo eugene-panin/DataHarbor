@@ -32,6 +32,7 @@ ENV/
 .dagster/
 dagster_home/
 *.dagster
+apps/dagster_app/workspace.yaml
 
 # Custom bundles stay local/private (platform ships only bundle infrastructure)
 bundles/*

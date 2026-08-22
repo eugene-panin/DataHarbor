@@ -1,8 +1,9 @@
+import logging
 import os
 import tempfile
+from typing import Any
+
 import requests
-import logging
-from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ def resolve_whisper_device() -> tuple[str, str]:
         pass
     return "cpu", "int8"
 
-def transcribe_audio_from_url_or_file(source_path_or_url: str) -> Dict[str, Any]:
+def transcribe_audio_from_url_or_file(source_path_or_url: str) -> dict[str, Any]:
     """Downloads video/audio from URL or local file, runs Faster-Whisper with hardware acceleration, and returns exact speech transcript."""
     logger.info(f"Transcribing audio/video from: {source_path_or_url}")
     

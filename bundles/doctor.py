@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from importlib.metadata import PackageNotFoundError, version as pkg_version
-from typing import Any, Dict, List, Optional
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
+from typing import Any
 
 from packaging.requirements import InvalidRequirement, Requirement
 
@@ -34,13 +35,13 @@ class DoctorReport:
     bundle_name: str
     bundle_path: str
     platform_version: str
-    checks: List[CheckResult] = field(default_factory=list)
+    checks: list[CheckResult] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
         return not any(c.status == "fail" for c in self.checks)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "bundle_name": self.bundle_name,
             "bundle_path": self.bundle_path,
@@ -59,8 +60,8 @@ def _resolve_bundle_path(name: str, bundles_dir: str) -> str:
     return path
 
 
-def _check_python_deps(manifest: Dict[str, Any]) -> List[CheckResult]:
-    results: List[CheckResult] = []
+def _check_python_deps(manifest: dict[str, Any]) -> list[CheckResult]:
+    results: list[CheckResult] = []
     reqs = (manifest.get("requirements") or {}).get("python")
     if not reqs:
         results.append(
@@ -119,7 +120,7 @@ def _check_python_deps(manifest: Dict[str, Any]) -> List[CheckResult]:
     return results
 
 
-def _check_extractors(manifest: Dict[str, Any], bundle_name: str) -> List[CheckResult]:
+def _check_extractors(manifest: dict[str, Any], bundle_name: str) -> list[CheckResult]:
     raw = (manifest.get("requirements") or {}).get("extractors")
     if not raw:
         return [CheckResult("extractors", "skip", "none declared")]
@@ -136,7 +137,7 @@ def _check_extractors(manifest: Dict[str, Any], bundle_name: str) -> List[CheckR
     except Exception as e:
         return [CheckResult("extractors", "fail", f"invalid requirements.extractors: {e}")]
 
-    out: List[CheckResult] = []
+    out: list[CheckResult] = []
     for req in requirements:
         extractor_id = req.get("name") or "?"
         source = req.get("source")
@@ -172,7 +173,7 @@ def _check_extractors(manifest: Dict[str, Any], bundle_name: str) -> List[CheckR
     return out
 
 
-def _check_dagster_entrypoint(bundle_name: str, bundle_path: str, manifest: Dict[str, Any]) -> List[CheckResult]:
+def _check_dagster_entrypoint(bundle_name: str, bundle_path: str, manifest: dict[str, Any]) -> list[CheckResult]:
     entrypoints = manifest.get("entrypoints") or {}
     if isinstance(entrypoints, dict) and entrypoints.get("dagster") is None:
         return [
@@ -228,7 +229,7 @@ def _check_dagster_entrypoint(bundle_name: str, bundle_path: str, manifest: Dict
 def doctor_bundle(
     bundle_name: str,
     *,
-    bundles_dir: Optional[str] = None,
+    bundles_dir: str | None = None,
 ) -> DoctorReport:
     """Run full diagnostic suite for one bundle."""
     root = bundles_dir or BUNDLES_DIR
@@ -275,7 +276,7 @@ def doctor_bundle(
     return report
 
 
-def doctor_all_bundles(*, bundles_dir: Optional[str] = None) -> List[DoctorReport]:
+def doctor_all_bundles(*, bundles_dir: str | None = None) -> list[DoctorReport]:
     root = bundles_dir or BUNDLES_DIR
     return [doctor_bundle(name, bundles_dir=root) for name, _path in iter_bundle_dirs(root)]
 

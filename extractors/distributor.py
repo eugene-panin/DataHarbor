@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import tarfile
 import zipfile
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from extractors.validator import ExtractorValidator
 
@@ -23,8 +23,8 @@ class ExtractorDistributor:
     def __init__(self, extractors_dir: str = EXTRACTORS_DIR):
         self.extractors_dir = extractors_dir
 
-    def list_extractors(self) -> List[Dict[str, Any]]:
-        extractors_info: List[Dict[str, Any]] = []
+    def list_extractors(self) -> list[dict[str, Any]]:
+        extractors_info: list[dict[str, Any]] = []
         if not os.path.exists(self.extractors_dir):
             return extractors_info
 
@@ -33,11 +33,11 @@ class ExtractorDistributor:
             if not os.path.isdir(extractor_path) or entry.startswith((".", "_")):
                 continue
 
-            manifest_data: Dict[str, Any] = {}
+            manifest_data: dict[str, Any] = {}
             manifest_path = os.path.join(extractor_path, "manifest.json")
             if os.path.exists(manifest_path):
                 try:
-                    with open(manifest_path, "r", encoding="utf-8") as f:
+                    with open(manifest_path, encoding="utf-8") as f:
                         manifest_data = json.load(f)
                 except Exception:
                     pass
@@ -57,7 +57,7 @@ class ExtractorDistributor:
             )
         return extractors_info
 
-    def install_extractor(self, source: str, force: bool = False) -> Dict[str, Any]:
+    def install_extractor(self, source: str, force: bool = False) -> dict[str, Any]:
         logger.info(f"Installing extractor from source: {source}")
         try:
             if (
@@ -101,7 +101,7 @@ class ExtractorDistributor:
                     shutil.rmtree(temp_extract)
                     raise ValueError("Archive is missing 'manifest.json' file.")
 
-                with open(manifest_path, "r", encoding="utf-8") as f:
+                with open(manifest_path, encoding="utf-8") as f:
                     mdata = json.load(f)
 
                 extractor_name = mdata.get("name", "custom_extractor").replace("-", "_")
@@ -123,7 +123,7 @@ class ExtractorDistributor:
                 if not os.path.exists(manifest_path):
                     raise ValueError(f"Local source directory '{source}' is missing 'manifest.json'.")
 
-                with open(manifest_path, "r", encoding="utf-8") as f:
+                with open(manifest_path, encoding="utf-8") as f:
                     mdata = json.load(f)
 
                 extractor_name = mdata.get("name", os.path.basename(source)).replace("-", "_")
@@ -167,7 +167,7 @@ class ExtractorDistributor:
             logger.error(f"Extractor installation failed: {e}")
             raise
 
-    def pack_extractor(self, extractor_name: str, output_dir: Optional[str] = None) -> str:
+    def pack_extractor(self, extractor_name: str, output_dir: str | None = None) -> str:
         extractor_path = os.path.join(self.extractors_dir, extractor_name)
         if not os.path.exists(extractor_path):
             raise ValueError(f"Extractor '{extractor_name}' does not exist in {self.extractors_dir}.")
@@ -178,7 +178,7 @@ class ExtractorDistributor:
                 f"Cannot pack invalid extractor '{extractor_name}':\n  - " + "\n  - ".join(errors)
             )
 
-        with open(os.path.join(extractor_path, "manifest.json"), "r", encoding="utf-8") as f:
+        with open(os.path.join(extractor_path, "manifest.json"), encoding="utf-8") as f:
             mdata = json.load(f)
 
         version = mdata.get("version", "0.1.0")

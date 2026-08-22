@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ def derive_extractor_name_from_source(source: str) -> str:
     return name
 
 
-def parse_extractor_requirement(entry: Any) -> Dict[str, Optional[str]]:
+def parse_extractor_requirement(entry: Any) -> dict[str, str | None]:
     """Normalize one requirements.extractors entry to ``{name, source}``."""
     if isinstance(entry, str):
         text = entry.strip()
@@ -108,7 +108,7 @@ def parse_extractor_requirement(entry: Any) -> Dict[str, Optional[str]]:
     )
 
 
-def parse_extractor_requirements(raw_entries: Any) -> List[Dict[str, Optional[str]]]:
+def parse_extractor_requirements(raw_entries: Any) -> list[dict[str, str | None]]:
     """Parse full ``requirements.extractors`` array."""
     if raw_entries is None:
         return []
@@ -117,7 +117,7 @@ def parse_extractor_requirements(raw_entries: Any) -> List[Dict[str, Optional[st
     return [parse_extractor_requirement(entry) for entry in raw_entries]
 
 
-def find_unpublished_local_extractors(bundle_path: str) -> List[Dict[str, Any]]:
+def find_unpublished_local_extractors(bundle_path: str) -> list[dict[str, Any]]:
     """Return extractors declared without a git remote (need user publish).
 
     Core platform example extractors (e.g. demo_site) are ignored.
@@ -129,13 +129,13 @@ def find_unpublished_local_extractors(bundle_path: str) -> List[Dict[str, Any]]:
     if not os.path.exists(manifest_path):
         return []
 
-    with open(manifest_path, "r", encoding="utf-8") as f:
+    with open(manifest_path, encoding="utf-8") as f:
         manifest = json.load(f)
 
     requirements = parse_extractor_requirements(
         (manifest.get("requirements") or {}).get("extractors")
     )
-    unpublished: List[Dict[str, Any]] = []
+    unpublished: list[dict[str, Any]] = []
 
     for req in requirements:
         name = req.get("name") or ""
@@ -170,15 +170,18 @@ def resolve_bundle_extractors(
     *,
     force: bool = False,
     install_missing: bool = True,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Install extractors declared with a source URL; return resolution report.
 
     Entries without ``source`` must already exist under ``extractors/``
     (core/platform extractors or previously installed plugins).
     """
+    from apps.scraper.extractors.registry import (
+        clear_registry_cache,
+        is_extractor_installed,
+    )
     from extractors.distributor import ExtractorDistributor
     from extractors.validator import EXTRACTORS_DIR
-    from apps.scraper.extractors.registry import clear_registry_cache, is_extractor_installed
 
     manifest_path = os.path.join(bundle_path, "manifest.json")
     if not os.path.exists(manifest_path):
@@ -186,14 +189,14 @@ def resolve_bundle_extractors(
 
     import json
 
-    with open(manifest_path, "r", encoding="utf-8") as f:
+    with open(manifest_path, encoding="utf-8") as f:
         manifest = json.load(f)
 
     requirements = parse_extractor_requirements(
         (manifest.get("requirements") or {}).get("extractors")
     )
     distributor = ExtractorDistributor()
-    report: List[Dict[str, Any]] = []
+    report: list[dict[str, Any]] = []
 
     for req in requirements:
         name = req["name"]

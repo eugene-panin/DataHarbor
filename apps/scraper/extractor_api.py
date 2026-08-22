@@ -5,17 +5,18 @@ They parse already-fetched content only — no HTTP, proxies, or browser control
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Protocol, runtime_checkable
+from collections.abc import Callable
+from typing import Any, Protocol, runtime_checkable
 
-ParseFn = Callable[[str, str], List[Dict[str, Any]]]
-PaginateFn = Callable[[str, int], List[str]]
+ParseFn = Callable[[str, str], list[dict[str, Any]]]
+PaginateFn = Callable[[str, int], list[str]]
 
 
 @runtime_checkable
 class ExtractorModule(Protocol):
     """Required surface of an extractor plugin module (``extractor.py``)."""
 
-    def parse(self, html: str, source_url: str) -> List[Dict[str, Any]]:
+    def parse(self, html: str, source_url: str) -> list[dict[str, Any]]:
         """Parse HTML into structured records. Each record should include ``source_url``."""
         ...
 
@@ -40,7 +41,7 @@ def resolve_entrypoint(entrypoint: str) -> tuple[str, str]:
     return module_stem, attr_name
 
 
-def ensure_source_url(records: List[Dict[str, Any]], source_url: str) -> List[Dict[str, Any]]:
+def ensure_source_url(records: list[dict[str, Any]], source_url: str) -> list[dict[str, Any]]:
     """Fill missing ``source_url`` on parsed records (contract minimum)."""
     for record in records:
         if not record.get(SOURCE_URL_KEY):

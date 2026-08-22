@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import List, Optional
 
 from dagster import Definitions
 
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 BUNDLES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bundles")
 
 
-def _skip_invalid_enabled(explicit: Optional[bool] = None) -> bool:
+def _skip_invalid_enabled(explicit: bool | None = None) -> bool:
     if explicit is not None:
         return explicit
     return os.getenv("DATAHARBOR_SKIP_INVALID_BUNDLES", "").strip().lower() in {
@@ -31,10 +30,10 @@ def _skip_invalid_enabled(explicit: Optional[bool] = None) -> bool:
 
 
 def discover_bundle_definitions(
-    bundles_dir: Optional[str] = None,
+    bundles_dir: str | None = None,
     *,
-    skip_invalid: Optional[bool] = None,
-) -> List[Definitions]:
+    skip_invalid: bool | None = None,
+) -> list[Definitions]:
     """
     Load each valid bundle's ``Definitions``.
 
@@ -43,7 +42,7 @@ def discover_bundle_definitions(
     """
     root = bundles_dir or BUNDLES_DIR
     soft = _skip_invalid_enabled(skip_invalid)
-    discovered: List[Definitions] = []
+    discovered: list[Definitions] = []
 
     for name, path in iter_bundle_dirs(root):
         is_valid, errors = BundleValidator(path).validate()
@@ -76,8 +75,8 @@ def discover_bundle_definitions(
 
 def merge_bundle_definitions(
     *base_defs: Definitions,
-    bundles_dir: Optional[str] = None,
-    skip_invalid: Optional[bool] = None,
+    bundles_dir: str | None = None,
+    skip_invalid: bool | None = None,
 ) -> Definitions:
     """Merge Core Definitions with all discovered bundle Definitions."""
     parts = [d for d in base_defs if d is not None]

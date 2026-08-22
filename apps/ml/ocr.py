@@ -1,8 +1,9 @@
-import os
-import requests
-import tempfile
 import logging
-from typing import Any, Dict, Union
+import os
+import tempfile
+from typing import Any
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ def check_gpu_support() -> bool:
         pass
     return False
 
-def extract_ocr_from_image(image_input: Union[str, Any]) -> Dict[str, Any]:
+def extract_ocr_from_image(image_input: str | Any) -> dict[str, Any]:
     """Extracts text embedded in banner images or video frame thumbnails via EasyOCR with GPU/MPS acceleration."""
     logger.info("Extracting OCR text from image source...")
     

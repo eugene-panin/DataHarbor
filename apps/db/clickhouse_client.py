@@ -1,6 +1,7 @@
-import os
 import logging
-from typing import Optional, List, Any
+import os
+from typing import Any
+
 import clickhouse_connect
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ def get_clickhouse_client():
         logger.error(f"Failed to connect to ClickHouse at {CLICKHOUSE_HOST}:{CLICKHOUSE_PORT}: {e}")
         return None
 
-def insert_batch(table_name: str, column_names: List[str], data_matrix: List[List[Any]]) -> bool:
+def insert_batch(table_name: str, column_names: list[str], data_matrix: list[list[Any]]) -> bool:
     """Inserts a batch of rows into ClickHouse for high-throughput OLAP performance."""
     if not data_matrix:
         return True

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import ssl
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener, urlopen
 
@@ -23,15 +23,15 @@ class HttpFetcher:
 
     def __init__(
         self,
-        proxies: Optional[Dict[str, str]] = None,
-        session_id: Optional[str] = None,
+        proxies: dict[str, str] | None = None,
+        session_id: str | None = None,
         use_proxy: bool = True,
         **_ignored: Any,
     ):
         self.session_id = session_id
         self.use_proxy = use_proxy
         if not use_proxy:
-            self.proxies: Dict[str, str] = {}
+            self.proxies: dict[str, str] = {}
         elif proxies is not None:
             self.proxies = proxies
         else:
@@ -40,10 +40,10 @@ class HttpFetcher:
     def fetch(
         self,
         url: str,
-        headers: Optional[Dict[str, str]] = None,
+        headers: dict[str, str] | None = None,
         timeout: int = 20,
         require_proxy: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Fetch a URL over HTTP(S). Returns status/headers/content dict."""
         if require_proxy and not self.proxies:
             return {
@@ -105,9 +105,9 @@ class HttpFetcher:
 
 def scrape_with_http(
     url: str,
-    headers: Optional[Dict[str, str]] = None,
-    session_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    headers: dict[str, str] | None = None,
+    session_id: str | None = None,
+) -> dict[str, Any]:
     """Helper wrapper for the core HTTP fetcher."""
     return HttpFetcher(session_id=session_id).fetch(url, headers=headers)
 

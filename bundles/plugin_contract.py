@@ -6,8 +6,9 @@ import json
 import logging
 import os
 import re
-from importlib.metadata import PackageNotFoundError, version as pkg_version
-from typing import Any, Dict, List, Optional, Tuple
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
+from typing import Any
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
@@ -41,18 +42,18 @@ def platform_version() -> str:
         return "0.0.0"
 
 
-def load_manifest(bundle_path: str) -> Dict[str, Any]:
+def load_manifest(bundle_path: str) -> dict[str, Any]:
     manifest_path = os.path.join(bundle_path, "manifest.json")
-    with open(manifest_path, "r", encoding="utf-8") as f:
+    with open(manifest_path, encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict):
         raise BundleContractError(f"manifest.json must be a JSON object in '{bundle_path}'")
     return data
 
 
-def check_engines(manifest: Dict[str, Any], *, platform_ver: Optional[str] = None) -> List[str]:
+def check_engines(manifest: dict[str, Any], *, platform_ver: str | None = None) -> list[str]:
     """Return error messages if engines.dataharbor does not match the platform."""
-    errors: List[str] = []
+    errors: list[str] = []
     engines = manifest.get("engines")
     if engines is None:
         return errors
@@ -81,7 +82,7 @@ def check_engines(manifest: Dict[str, Any], *, platform_ver: Optional[str] = Non
     return errors
 
 
-def resolve_dagster_entrypoint(manifest: Dict[str, Any]) -> Tuple[str, str]:
+def resolve_dagster_entrypoint(manifest: dict[str, Any]) -> tuple[str, str]:
     """
     Resolve (module_leaf, attr) for Dagster Definitions.
 
@@ -110,9 +111,9 @@ def resolve_dagster_entrypoint(manifest: Dict[str, Any]) -> Tuple[str, str]:
     return module_leaf, attr
 
 
-def validate_manifest_contract(manifest: Dict[str, Any]) -> List[str]:
+def validate_manifest_contract(manifest: dict[str, Any]) -> list[str]:
     """Structural checks for engines / entrypoints / requirements.python."""
-    errors: List[str] = []
+    errors: list[str] = []
     errors.extend(check_engines(manifest))
 
     entrypoints = manifest.get("entrypoints")
@@ -149,7 +150,11 @@ def validate_manifest_contract(manifest: Dict[str, Any]) -> List[str]:
 
 def load_bundle_definitions_object(bundle_name: str, bundle_path: str) -> Any:
     """Import and return a dagster.Definitions instance for one bundle."""
-    from dagster import Definitions, load_asset_checks_from_modules, load_assets_from_modules
+    from dagster import (
+        Definitions,
+        load_asset_checks_from_modules,
+        load_assets_from_modules,
+    )
 
     manifest = load_manifest(bundle_path)
     engine_errors = check_engines(manifest)
@@ -200,11 +205,11 @@ def load_bundle_definitions_object(bundle_name: str, bundle_path: str) -> Any:
     return Definitions(assets=assets, asset_checks=checks)
 
 
-def iter_bundle_dirs(bundles_dir: str) -> List[Tuple[str, str]]:
+def iter_bundle_dirs(bundles_dir: str) -> list[tuple[str, str]]:
     """Return [(bundle_name, absolute_path), ...] for installable bundle folders."""
     if not os.path.isdir(bundles_dir):
         return []
-    out: List[Tuple[str, str]] = []
+    out: list[tuple[str, str]] = []
     for entry in sorted(os.listdir(bundles_dir)):
         if entry.startswith((".", "_")) or entry in CORE_BUNDLE_PACKAGE_NAMES:
             continue

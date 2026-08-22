@@ -110,6 +110,7 @@ harbor health
 * `bundles/plugin_contract.py` — Bundle engines/entrypoints contract and Definitions loader.
 * `bundles/loader.py` — Discover + `Definitions.merge` for installed bundles (fail-fast).
 * `bundles/distributor.py` — Bundle installer and packer.
+* `bundles/scaffold.py` — Multi-template bundle generator (`harbor bundle new --template default|ml|etl|dagster`).
 * `bundles/validator.py` — Bundle validator (including required extractors + plugin contract).
 * `extractors/distributor.py` — Extractor installer and packer.
 * `extractors/validator.py` — Extractor validator.

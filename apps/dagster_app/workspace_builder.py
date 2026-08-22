@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import yaml
 
@@ -24,7 +24,7 @@ DEFAULT_WORKSPACE_PATH = os.path.join(
 BUNDLES_DIR = os.path.join(PROJECT_ROOT, "bundles")
 
 
-def _core_location(working_directory: str) -> Dict[str, Any]:
+def _core_location(working_directory: str) -> dict[str, Any]:
     return {
         "python_module": {
             "module_name": "apps.dagster_app.definitions",
@@ -40,7 +40,7 @@ def _bundle_location(
     module_leaf: str,
     attr: str,
     working_directory: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return {
         "python_module": {
             "module_name": f"bundles.{bundle_name}.{module_leaf}",
@@ -53,10 +53,10 @@ def _bundle_location(
 
 def discover_workspace_locations(
     *,
-    bundles_dir: Optional[str] = None,
-    project_root: Optional[str] = None,
+    bundles_dir: str | None = None,
+    project_root: str | None = None,
     skip_invalid: bool = True,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+) -> tuple[list[dict[str, Any]], list[str]]:
     """
     Return (load_from entries, warnings).
 
@@ -65,8 +65,8 @@ def discover_workspace_locations(
     """
     root = os.path.abspath(project_root or PROJECT_ROOT)
     bundles_root = bundles_dir or os.path.join(root, "bundles")
-    load_from: List[Dict[str, Any]] = [_core_location(root)]
-    warnings: List[str] = []
+    load_from: list[dict[str, Any]] = [_core_location(root)]
+    warnings: list[str] = []
 
     for name, path in iter_bundle_dirs(bundles_root):
         is_valid, errors = BundleValidator(path).validate()
@@ -116,10 +116,10 @@ def discover_workspace_locations(
 
 def build_workspace_document(
     *,
-    bundles_dir: Optional[str] = None,
-    project_root: Optional[str] = None,
+    bundles_dir: str | None = None,
+    project_root: str | None = None,
     skip_invalid: bool = True,
-) -> Tuple[Dict[str, Any], List[str]]:
+) -> tuple[dict[str, Any], list[str]]:
     load_from, warnings = discover_workspace_locations(
         bundles_dir=bundles_dir,
         project_root=project_root,
@@ -129,12 +129,12 @@ def build_workspace_document(
 
 
 def write_workspace_yaml(
-    path: Optional[str] = None,
+    path: str | None = None,
     *,
-    bundles_dir: Optional[str] = None,
-    project_root: Optional[str] = None,
+    bundles_dir: str | None = None,
+    project_root: str | None = None,
     skip_invalid: bool = True,
-) -> Tuple[str, Dict[str, Any], List[str]]:
+) -> tuple[str, dict[str, Any], list[str]]:
     """Write workspace.yaml and return (path, document, warnings)."""
     out = os.path.abspath(path or DEFAULT_WORKSPACE_PATH)
     doc, warnings = build_workspace_document(
@@ -154,8 +154,8 @@ def write_workspace_yaml(
     return out, doc, warnings
 
 
-def location_names(doc: Dict[str, Any]) -> List[str]:
-    names: List[str] = []
+def location_names(doc: dict[str, Any]) -> list[str]:
+    names: list[str] = []
     for entry in doc.get("load_from") or []:
         for key in ("python_module", "python_file", "grpc_server"):
             block = entry.get(key)

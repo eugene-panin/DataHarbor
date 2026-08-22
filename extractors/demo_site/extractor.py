@@ -1,10 +1,10 @@
 """Extractor scaffold for `demo_site` — parse only, no HTTP."""
-from typing import Any, Dict, List
+from typing import Any
 
 from bs4 import BeautifulSoup
 
 
-def parse(html: str, source_url: str) -> List[Dict[str, Any]]:
+def parse(html: str, source_url: str) -> list[dict[str, Any]]:
     """Parse already-fetched HTML into structured records.
 
     Contract:
@@ -13,7 +13,7 @@ def parse(html: str, source_url: str) -> List[Dict[str, Any]]:
     - do not perform HTTP / proxy / browser control here
     """
     soup = BeautifulSoup(html or "", "html.parser")
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
 
     # TODO: replace selectors for your target site
     for node in soup.select("h1, h2, h3, .card, .item"):
@@ -32,7 +32,7 @@ def parse(html: str, source_url: str) -> List[Dict[str, Any]]:
     return results
 
 
-def generate_page_urls(base_url: str, max_pages: int = 10) -> List[str]:
+def generate_page_urls(base_url: str, max_pages: int = 10) -> list[str]:
     """Optional pagination helper used by registry.generate_page_urls_for_domain."""
     urls = [base_url]
     limit = 10 if max_pages <= 0 else max_pages

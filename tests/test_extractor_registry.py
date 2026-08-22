@@ -13,6 +13,7 @@ from apps.scraper.extractors.registry import (
     list_installed_extractors,
     require_extractor,
 )
+from bundles.validator import BundleValidator
 from extractors.requirements import (
     derive_extractor_name_from_source,
     parse_extractor_requirement,
@@ -20,7 +21,6 @@ from extractors.requirements import (
     resolve_bundle_extractors,
 )
 from extractors.validator import EXTRACTORS_DIR, ExtractorValidator
-from bundles.validator import BundleValidator
 
 
 class ExtractorRegistryTests(unittest.TestCase):

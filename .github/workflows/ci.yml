@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - ".agents/**"
+      - "README.*"
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - ".agents/**"
+      - "README.*"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install (frozen lockfile)
+        run: uv sync --frozen --group dev
+
+      - name: Ruff
+        run: uv run ruff check apps bundles extractors tests
+
+      - name: Pytest
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: uv run pytest tests/ -q --tb=short
+
+      - name: Validate plugins
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          uv run harbor bundle validate
+          uv run harbor extractor validate
+
+      - name: Build package
+        run: uv build

@@ -1,9 +1,8 @@
-import os
-import sys
-import shutil
 import logging
+import os
+import shutil
 import subprocess
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ GLOBAL_SKILL_TARGETS = [
 class SkillManagerEngine:
     """Manages skill registration and injects active runtime environment context (Kubernetes vs Docker Compose vs Local Host)."""
 
-    def detect_runtime_environment(self) -> Dict[str, Any]:
+    def detect_runtime_environment(self) -> dict[str, Any]:
         """Detects whether DataHarbor is running in Kubernetes, Docker Compose, or Local Host environment."""
         is_k8s = False
         is_docker = False
@@ -83,7 +82,7 @@ class SkillManagerEngine:
             "qdrant_url": qdrant_url,
         }
 
-    def generate_environment_context_block(self, env_info: Dict[str, Any]) -> str:
+    def generate_environment_context_block(self, env_info: dict[str, Any]) -> str:
         """Generates markdown block detailing active environment runtime bindings for AI Agents."""
         return f"""
 ---
@@ -101,7 +100,7 @@ class SkillManagerEngine:
 - **Core Notifier:** Telegram / Slack / `NOTIFY_WEBHOOK_URL` (n8n optional via `--with-n8n`)
 """
 
-    def install_bundled_skills(self) -> Dict[str, Any]:
+    def install_bundled_skills(self) -> dict[str, Any]:
         """Installs bundled skills to local and global agent skill directories, injecting active environment context."""
         env_info = self.detect_runtime_environment()
         env_block = self.generate_environment_context_block(env_info)
@@ -117,7 +116,7 @@ class SkillManagerEngine:
 
             if os.path.isdir(local_skill_path) and os.path.exists(skill_md_path):
                 # Read SKILL.md
-                with open(skill_md_path, "r", encoding="utf-8") as f:
+                with open(skill_md_path, encoding="utf-8") as f:
                     content = f.read()
 
                 # Strip existing environment block if present
@@ -146,7 +145,7 @@ class SkillManagerEngine:
             "installed_skills": installed_skills
         }
 
-    def list_installed_skills(self) -> List[Dict[str, Any]]:
+    def list_installed_skills(self) -> list[dict[str, Any]]:
         """Lists installed skills and their runtime environment context."""
         env_info = self.detect_runtime_environment()
         skills = []

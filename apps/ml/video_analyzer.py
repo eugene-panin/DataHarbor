@@ -1,17 +1,18 @@
-import os
-import cv2
-import tempfile
-import requests
 import logging
-from typing import Dict, Any, List
+import os
+import tempfile
+from typing import Any
 
-from apps.ml.transcription import transcribe_audio_from_url_or_file
-from apps.ml.ocr import extract_ocr_from_image
+import cv2
+import requests
+
 from apps.ml.embeddings import generate_multimodal_embedding
+from apps.ml.ocr import extract_ocr_from_image
+from apps.ml.transcription import transcribe_audio_from_url_or_file
 
 logger = logging.getLogger(__name__)
 
-def extract_keyframes_from_video(video_path: str, max_frames: int = 5) -> List[str]:
+def extract_keyframes_from_video(video_path: str, max_frames: int = 5) -> list[str]:
     """Extracts keyframes from a video at uniform intervals and saves them as temp JPG files."""
     frame_paths = []
     cap = cv2.VideoCapture(video_path)
@@ -50,7 +51,7 @@ def extract_keyframes_from_video(video_path: str, max_frames: int = 5) -> List[s
     logger.info(f"Extracted {len(frame_paths)} keyframes for visual OCR inspection.")
     return frame_paths
 
-def analyze_full_video(video_source: str, brand_name: str = "Test Brand") -> Dict[str, Any]:
+def analyze_full_video(video_source: str, brand_name: str = "Test Brand") -> dict[str, Any]:
     """Performs 360-degree multimodal analysis of a video (Speech Audio + Keyframe Visual OCR + Vector Embedding)."""
     logger.info(f"=== STARTING FULL MULTIMODAL VIDEO ANALYSIS FOR: {video_source} ===")
     

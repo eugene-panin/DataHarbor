@@ -1,9 +1,10 @@
-import os
 import ast
-import json
 import logging
+import os
+from typing import Any
+
 import requests
-from typing import Dict, Any, Optional
+
 from apps.db.connection import get_db_cursor
 
 logger = logging.getLogger(__name__)
@@ -131,7 +132,7 @@ class AIRemediatorEngine:
     def load_product_context(self) -> str:
         """Loads master product context from AGENTS.md."""
         if os.path.exists(AGENTS_MD_PATH):
-            with open(AGENTS_MD_PATH, "r", encoding="utf-8") as f:
+            with open(AGENTS_MD_PATH, encoding="utf-8") as f:
                 return f.read()
         return "Product Context: DataHarbor open-core data platform."
 
@@ -151,12 +152,12 @@ class AIRemediatorEngine:
             return response_text.split("```")[1].split("```")[0].strip()
         return response_text.strip()
 
-    def diagnose_bundle_failure(self, bundle_name: str) -> Dict[str, Any]:
+    def diagnose_bundle_failure(self, bundle_name: str) -> dict[str, Any]:
         """Collects failure logs and builds AI remediation prompt."""
         scraper_path = os.path.join(BUNDLES_DIR, bundle_name, "scraper.py")
         scraper_code = ""
         if os.path.exists(scraper_path):
-            with open(scraper_path, "r", encoding="utf-8") as f:
+            with open(scraper_path, encoding="utf-8") as f:
                 scraper_code = f.read()
 
         last_error_log = {}
@@ -208,12 +209,12 @@ class AIRemediatorEngine:
             "scraper_path": scraper_path
         }
 
-    def get_compressed_diagnostic_json(self, bundle_name: str) -> Dict[str, Any]:
+    def get_compressed_diagnostic_json(self, bundle_name: str) -> dict[str, Any]:
         """Returns compressed, token-optimized JSON diagnostic context for external LLM Agents (HAP v1.0)."""
         diag = self.diagnose_bundle_failure(bundle_name)
         scraper_code = ""
         if os.path.exists(diag["scraper_path"]):
-            with open(diag["scraper_path"], "r", encoding="utf-8") as f:
+            with open(diag["scraper_path"], encoding="utf-8") as f:
                 scraper_code = f.read()
 
         code_snippet = scraper_code[:600] if scraper_code else ""
@@ -228,7 +229,7 @@ class AIRemediatorEngine:
             "instruction": "Fix CSS selectors or handling logic. Return valid Python code block."
         }
 
-    def autofix_bundle_scraper(self, bundle_name: str) -> Dict[str, Any]:
+    def autofix_bundle_scraper(self, bundle_name: str) -> dict[str, Any]:
         """Queries LLM provider, validates AST, and applies patch autonomously."""
         diag = self.diagnose_bundle_failure(bundle_name)
         prompt = diag["ai_prompt"]

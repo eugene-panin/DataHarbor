@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from apps.cli.paths import PROJECT_ROOT
 
@@ -32,15 +32,15 @@ _IGNORE_NAMES = {
 @dataclass
 class PublishReadiness:
     git_ok: bool
-    git_path: Optional[str]
-    git_user_name: Optional[str]
-    git_user_email: Optional[str]
+    git_path: str | None
+    git_user_name: str | None
+    git_user_email: str | None
     gh_ok: bool
-    gh_path: Optional[str]
+    gh_path: str | None
     gh_authed: bool
     ssh_key_found: bool
-    hard_failures: List[str]
-    warnings: List[str]
+    hard_failures: list[str]
+    warnings: list[str]
 
     @property
     def can_commit(self) -> bool:
@@ -52,9 +52,9 @@ class PublishReadiness:
 
 
 def _run(
-    cmd: List[str],
+    cmd: list[str],
     *,
-    cwd: Optional[str] = None,
+    cwd: str | None = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess:
     logger.debug("Running: %s (cwd=%s)", " ".join(cmd), cwd)
@@ -67,7 +67,7 @@ def _run(
     )
 
 
-def _git_config(key: str) -> Optional[str]:
+def _git_config(key: str) -> str | None:
     if not shutil.which("git"):
         return None
     try:
@@ -80,8 +80,8 @@ def _git_config(key: str) -> Optional[str]:
 
 def check_publish_readiness() -> PublishReadiness:
     """NFR checks for publish/install git workflow."""
-    hard: List[str] = []
-    warnings: List[str] = []
+    hard: list[str] = []
+    warnings: list[str] = []
 
     git_path = shutil.which("git")
     git_ok = bool(git_path)
@@ -163,7 +163,7 @@ def _copy_plugin_snapshot(src: str, dest: str) -> None:
         shutil.rmtree(dest)
     os.makedirs(dest, exist_ok=True)
 
-    def _ignore(directory: str, names: List[str]) -> List[str]:
+    def _ignore(directory: str, names: list[str]) -> list[str]:
         ignored = []
         for name in names:
             if name in _IGNORE_NAMES or name.endswith(".pyc"):
@@ -227,13 +227,13 @@ def publish_plugin(
     kind: PluginKind,
     name: str,
     *,
-    remote: Optional[str] = None,
-    workdir: Optional[str] = None,
-    repo_name: Optional[str] = None,
+    remote: str | None = None,
+    workdir: str | None = None,
+    repo_name: str | None = None,
     visibility: str = "private",
     dry_run: bool = False,
     allow_local_extractors: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Validate, stage, and publish a bundle/extractor to a git remote."""
     visibility_norm = (visibility or "private").strip().lower()
     if visibility_norm not in {"private", "public"}:
@@ -252,7 +252,7 @@ def publish_plugin(
     source = _plugin_root(kind, name)
     _validate_plugin(kind, source)
 
-    unpublished: List[Dict[str, Any]] = []
+    unpublished: list[dict[str, Any]] = []
     if kind == "bundle":
         from extractors.requirements import find_unpublished_local_extractors
 

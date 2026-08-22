@@ -3,18 +3,18 @@ from __future__ import annotations
 
 import json
 import ssl
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
 def post_json(
     url: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     *,
     timeout: float = 10,
-    headers: Optional[Dict[str, str]] = None,
-) -> Tuple[int, str]:
+    headers: dict[str, str] | None = None,
+) -> tuple[int, str]:
     """POST JSON and return (status_code, response_text)."""
     body = json.dumps(payload).encode("utf-8")
     req_headers = {"Content-Type": "application/json", "Accept": "application/json"}

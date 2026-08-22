@@ -1,10 +1,10 @@
-import os
-import sys
 import argparse
 import importlib
-from typing import Optional
-from bundles.validator import validate_all_bundles
+import os
+import sys
+
 from bundles.distributor import BundleDistributor
+from bundles.validator import validate_all_bundles
 
 BUNDLES_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -32,7 +32,7 @@ def list_bundles():
             for err in b["errors"]:
                 print(f"    - {err}")
         print("-" * 80)
-    print("")
+    print()
 
 def validate_bundles():
     print(f"🔍 Validating all bundles in: {BUNDLES_DIR}\n")
@@ -67,7 +67,7 @@ def install_bundle(source: str, force: bool = False):
         print(f"\n❌ Bundle Installation Failed: {e}")
         sys.exit(1)
 
-def pack_bundle(bundle_name: str, output_dir: Optional[str] = None):
+def pack_bundle(bundle_name: str, output_dir: str | None = None):
     distributor = BundleDistributor(BUNDLES_DIR)
     try:
         archive_path = distributor.pack_bundle(bundle_name, output_dir)
@@ -86,8 +86,8 @@ def remove_bundle(bundle_name: str):
         print(f"\n❌ Bundle Removal Failed: {e}")
         sys.exit(1)
 
-def export_bundles(target_bundle: Optional[str] = None):
-    print(f"📦 Exporting bundle cards datasets...\n")
+def export_bundles(target_bundle: str | None = None):
+    print("📦 Exporting bundle cards datasets...\n")
     if target_bundle:
         bundle_names = [target_bundle]
     else:

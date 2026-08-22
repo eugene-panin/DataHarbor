@@ -15,8 +15,8 @@ class HttpFetcherProxyPolicyTests(TestCase):
         request.assert_not_called()
 
     def test_fetch_returns_http_error_body(self):
-        from urllib.error import HTTPError
         from io import BytesIO
+        from urllib.error import HTTPError
 
         err = HTTPError("https://example.com", 404, "Not Found", hdrs=None, fp=BytesIO(b"missing"))
         scraper = HttpFetcher(use_proxy=False)

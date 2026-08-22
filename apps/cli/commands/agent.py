@@ -37,7 +37,7 @@ def patch(
     """Apply AST-validated Python patch to scraper.py."""
     from apps.observability.ai_remediator import AIRemediatorEngine
 
-    with open(code_file, "r", encoding="utf-8") as f:
+    with open(code_file, encoding="utf-8") as f:
         patch_code = f.read()
     remediator = AIRemediatorEngine()
     is_valid, msg = remediator.validate_python_ast(patch_code)

@@ -5,7 +5,6 @@ import base64
 import logging
 import os
 import subprocess
-from typing import Optional
 
 import typer
 
@@ -22,7 +21,10 @@ app = typer.Typer(help="Manage modular business domain bundles", no_args_is_help
 def _refresh_dagster_workspace() -> None:
     """Best-effort regenerate Dagster multi-location workspace.yaml."""
     try:
-        from apps.dagster_app.workspace_builder import location_names, write_workspace_yaml
+        from apps.dagster_app.workspace_builder import (
+            location_names,
+            write_workspace_yaml,
+        )
 
         path, doc, warnings = write_workspace_yaml(project_root=PROJECT_ROOT)
         names = location_names(doc)
@@ -119,7 +121,7 @@ def validate_bundles() -> None:
 
 @app.command("doctor")
 def doctor_bundle_cmd(
-    name: Optional[str] = typer.Argument(
+    name: str | None = typer.Argument(
         None,
         help="Bundle name (default: diagnose all installed bundles)",
     ),
@@ -154,27 +156,49 @@ def doctor_bundle_cmd(
         raise typer.Exit(code=1)
 
 
+@app.command("templates")
+def list_templates_cmd() -> None:
+    """List available bundle scaffold templates."""
+    from bundles.scaffold import list_bundle_templates
+
+    print("\n📦 BUNDLE SCAFFOLD TEMPLATES:")
+    print("=" * 60)
+    for tpl in list_bundle_templates():
+        print(f"• {tpl.id:<10} — {tpl.title}")
+        print(f"  {tpl.description}")
+        print(f"  files: {', '.join(tpl.files)}")
+    print("=" * 60)
+    print("Usage: harbor bundle new <name> --template ml\n")
+
+
 @app.command("new")
 def new_bundle(
     name: str = typer.Argument(..., help="Bundle name (Python identifier)"),
-    description: Optional[str] = typer.Option(None, "--description"),
+    template: str = typer.Option(
+        "default",
+        "--template",
+        "-t",
+        help="Scaffold template: default | ml | etl | dagster",
+    ),
+    description: str | None = typer.Option(None, "--description"),
     category: str = typer.Option("custom", "--category"),
-    extractors: Optional[str] = typer.Option(
+    extractors: str | None = typer.Option(
         None, "--extractors", help="Comma-separated extractor ids/URLs"
     ),
-    path: Optional[str] = typer.Option(
+    path: str | None = typer.Option(
         None, "--path", help="Target directory (default: bundles/<name>)"
     ),
     force: bool = typer.Option(False, "--force", help="Overwrite existing path"),
 ) -> None:
-    """Scaffold a new bundle (manifest, scraper, db)."""
+    """Scaffold a new bundle from a template."""
     from bundles.scaffold import create_bundle
 
     extractor_list = [x.strip() for x in (extractors or "").split(",") if x.strip()]
-    print(f"\n📦 Creating bundle scaffold '{name}'...")
+    print(f"\n📦 Creating bundle scaffold '{name}' (template: {template})...")
     try:
         result = create_bundle(
             name,
+            template=template,
             description=description,
             category=category,
             extractors=extractor_list,
@@ -185,10 +209,11 @@ def new_bundle(
         print(f"❌ {e}")
         raise typer.Exit(code=1) from e
     print(f"✨ {result['message']}")
+    print(f"   Template: {result['template']}")
     print(f"   Files: {', '.join(result['files'])}")
     print("   Next: fill assets.py `defs`, then `harbor bundle doctor <name>` / `validate`")
     _refresh_dagster_workspace()
-    print("")
+    print()
 
 
 @app.command("install")
@@ -208,7 +233,7 @@ def install_bundle(
         src = f" <- {item['source']}" if item.get("source") else ""
         print(f"   🔌 extractor [{item['status']}]: {item['name']}{src}")
     _refresh_dagster_workspace()
-    print("")
+    print()
 
 
 @app.command("resolve")
@@ -229,13 +254,13 @@ def resolve_extractors(
     for item in report:
         src = f" <- {item['source']}" if item.get("source") else ""
         print(f"• [{item['status']}] {item['name']}{src}")
-    print("")
+    print()
 
 
 @app.command("pack")
 def pack_bundle(
     bundle_name: str = typer.Argument(...),
-    output: Optional[str] = typer.Option(None, "--output", help="Output directory"),
+    output: str | None = typer.Option(None, "--output", help="Output directory"),
 ) -> None:
     """Pack bundle into a clean .tar.gz archive."""
     print(f"\n📦 Packing DataHarbor Bundle: '{bundle_name}'...")
@@ -258,21 +283,21 @@ def remove_bundle(bundle_name: str = typer.Argument(...)) -> None:
         raise typer.Exit(code=1) from e
     print(f"✨ Bundle '{bundle_name}' successfully removed.")
     _refresh_dagster_workspace()
-    print("")
+    print()
 
 
 @app.command("publish")
 def publish_bundle(
     name: str = typer.Argument(..., help="Bundle directory name under bundles/"),
-    remote: Optional[str] = typer.Option(
+    remote: str | None = typer.Option(
         None, "--remote", help="Existing git remote URL (skips gh repo create)"
     ),
-    workdir: Optional[str] = typer.Option(
+    workdir: str | None = typer.Option(
         None,
         "--workdir",
         help="Permanent staging directory (default: temporary snapshot)",
     ),
-    repo_name: Optional[str] = typer.Option(
+    repo_name: str | None = typer.Option(
         None, "--repo-name", help="GitHub repo name (default: dh-bundle-<name>)"
     ),
     visibility: str = typer.Option(
@@ -340,7 +365,7 @@ def publish_bundle(
                 "   note   : real publish will stop until extractors are published "
                 "(or pass --allow-local-extractors)"
             )
-        print("")
+        print()
         return
 
     print(f"✨ {result['message']}")
@@ -352,7 +377,7 @@ def publish_bundle(
 @app.command("export")
 def export_bundle(
     bundle_name: str = typer.Argument(...),
-    output: Optional[str] = typer.Option(None, "--output"),
+    output: str | None = typer.Option(None, "--output"),
     runtime: str = typer.Option("auto", "--runtime", help="auto|host|compose"),
 ) -> None:
     """Export standalone interactive HTML presentation report."""
@@ -373,7 +398,7 @@ def export_bundle(
 @app.command("view")
 def view_bundle(
     bundle_name: str = typer.Argument(...),
-    output: Optional[str] = typer.Option(None, "--output"),
+    output: str | None = typer.Option(None, "--output"),
     serve: bool = typer.Option(False, "--serve", help="Launch dynamic web server"),
     port: int = typer.Option(8090, "--port"),
     runtime: str = typer.Option("auto", "--runtime", help="auto|host|compose"),
@@ -418,7 +443,7 @@ def view_bundle(
                 logger.error(f"Error serving bundle presentation view: {e}")
                 self.send_response(500)
                 self.end_headers()
-                self.wfile.write(f"500 Internal Server Error: {e}".encode("utf-8"))
+                self.wfile.write(f"500 Internal Server Error: {e}".encode())
 
     print(f"🚀 Serving interactive Bundle Presentation View at: http://localhost:{port}")
     print("Press Ctrl+C to stop web server.\n")

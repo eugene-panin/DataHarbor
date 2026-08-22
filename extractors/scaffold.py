@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from extractors.validator import ExtractorValidator
 
@@ -30,11 +30,11 @@ def _write(path: str, content: str) -> None:
 def create_extractor(
     name: str,
     *,
-    description: Optional[str] = None,
-    domains: Optional[List[str]] = None,
-    target_dir: Optional[str] = None,
+    description: str | None = None,
+    domains: list[str] | None = None,
+    target_dir: str | None = None,
     force: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create a minimal valid extractor scaffold.
 
     Default location: ``extractors/<name>/``.

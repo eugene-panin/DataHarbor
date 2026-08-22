@@ -1,5 +1,7 @@
 import logging
-from dagster import asset, Output, MetadataValue
+
+from dagster import MetadataValue, Output, asset
+
 from apps.scraper.http_fetcher import scrape_with_http
 
 logger = logging.getLogger(__name__)

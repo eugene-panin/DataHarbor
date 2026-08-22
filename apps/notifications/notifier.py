@@ -4,8 +4,9 @@ from __future__ import annotations
 import logging
 import os
 import re
+from collections.abc import Iterable
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
 from apps.notifications.http_json import post_json
 from apps.notifications.telegram import send_telegram_notification
@@ -15,8 +16,8 @@ logger = logging.getLogger(__name__)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
-def _env_urls(*keys: str) -> List[str]:
-    urls: List[str] = []
+def _env_urls(*keys: str) -> list[str]:
+    urls: list[str] = []
     for key in keys:
         raw = (os.getenv(key) or "").strip()
         if not raw:
@@ -32,9 +33,9 @@ def _strip_html(text: str) -> str:
     return _HTML_TAG_RE.sub("", text).replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
 
 
-def _unique(urls: Iterable[str]) -> List[str]:
+def _unique(urls: Iterable[str]) -> list[str]:
     seen = set()
-    out: List[str] = []
+    out: list[str] = []
     for url in urls:
         if url not in seen:
             seen.add(url)
@@ -42,7 +43,7 @@ def _unique(urls: Iterable[str]) -> List[str]:
     return out
 
 
-def send_slack_notification(text: str, webhook_url: Optional[str] = None) -> bool:
+def send_slack_notification(text: str, webhook_url: str | None = None) -> bool:
     """Post plain text to a Slack incoming webhook."""
     url = webhook_url or (os.getenv("SLACK_WEBHOOK_URL") or "").strip()
     if not url:
@@ -60,9 +61,9 @@ def send_slack_notification(text: str, webhook_url: Optional[str] = None) -> boo
 
 def send_webhook_event(
     event_type: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     *,
-    webhook_urls: Optional[Iterable[str]] = None,
+    webhook_urls: Iterable[str] | None = None,
 ) -> bool:
     """POST a JSON event to optional generic webhooks (n8n, Zapier, custom)."""
     urls = _unique(
@@ -94,10 +95,10 @@ def send_webhook_event(
 
 def notify(
     *,
-    text_html: Optional[str] = None,
-    text_plain: Optional[str] = None,
-    event: Optional[str] = None,
-    payload: Optional[Dict[str, Any]] = None,
+    text_html: str | None = None,
+    text_plain: str | None = None,
+    event: str | None = None,
+    payload: dict[str, Any] | None = None,
 ) -> bool:
     """
     Fan-out notification to configured Core channels.

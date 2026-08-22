@@ -7,7 +7,10 @@ import sys
 
 
 def main() -> None:
-    from apps.dagster_app.workspace_builder import DEFAULT_WORKSPACE_PATH, write_workspace_yaml
+    from apps.dagster_app.workspace_builder import (
+        DEFAULT_WORKSPACE_PATH,
+        write_workspace_yaml,
+    )
 
     host = os.getenv("DAGSTER_DEV_HOST", "0.0.0.0")
     port = os.getenv("DAGSTER_DEV_PORT", "3000")

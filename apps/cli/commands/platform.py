@@ -4,7 +4,6 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import Optional
 
 import typer
 
@@ -239,14 +238,14 @@ def status() -> None:
                 print("-" * 70)
         except Exception:
             pass
-    print("")
+    print()
 
 
 def health(
-    fix: Optional[str] = typer.Option(
+    fix: str | None = typer.Option(
         None, "--fix", help="Generate AI Auto-Remediation prompt for a bundle"
     ),
-    auto_fix: Optional[str] = typer.Option(
+    auto_fix: str | None = typer.Option(
         None, "--auto-fix", help="Autonomously patch scraper.py for a bundle"
     ),
 ) -> None:
@@ -304,7 +303,7 @@ def health(
                 print(f"  💡 Run AI Diagnosis: harbor health --fix {r['bundle_name']}")
                 print(f"  🤖 Run Autonomous AI Fix: harbor health --auto-fix {r['bundle_name']}")
             print("-" * 70)
-        print("")
+        print()
     except Exception as e:
         print(f"Error checking scraper health: {e}")
         raise typer.Exit(code=1) from e

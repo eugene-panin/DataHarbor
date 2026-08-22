@@ -1,5 +1,4 @@
 import logging
-from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +16,7 @@ def get_best_torch_device() -> str:
         logger.debug(f"PyTorch device resolution fallback: {e}")
     return "cpu"
 
-def generate_multimodal_embedding(text: str, media_type: str = "text") -> List[float]:
+def generate_multimodal_embedding(text: str, media_type: str = "text") -> list[float]:
     """Generates a 512-dimensional vector embedding with hardware acceleration (MPS/CUDA/CPU).
 
     Requires optional extra: ``uv sync --extra ml``.

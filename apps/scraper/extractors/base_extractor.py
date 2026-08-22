@@ -1,9 +1,9 @@
 """Base utilities for all DataHarbor extractors."""
 import re
-from typing import Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
-def extract_clean_website(raw_url: Optional[str]) -> Optional[str]:
+
+def extract_clean_website(raw_url: str | None) -> str | None:
     """Unquotes redirect parameters, strips tracking query parameters, sanitizes unicode spaces, and normalizes target domain links."""
     if not raw_url:
         return None
@@ -12,7 +12,7 @@ def extract_clean_website(raw_url: Optional[str]) -> Optional[str]:
         try:
             parsed = urlparse(url)
             qs = parse_qs(parsed.query)
-            if "u" in qs and qs["u"]:
+            if qs.get("u"):
                 url = unquote(qs["u"][0])
         except Exception:
             pass
@@ -24,15 +24,14 @@ def extract_clean_website(raw_url: Optional[str]) -> Optional[str]:
         try:
             parsed = urlparse(url)
             netloc = parsed.netloc.lower().strip()
-            if netloc.startswith("www."):
-                netloc = netloc[4:]
+            netloc = netloc.removeprefix("www.")
             path = parsed.path.rstrip("/").strip()
             url = f"https://{netloc}{path}"
         except Exception:
             pass
     return url.strip() if url else None
 
-def compute_lead_score(rating_str: Optional[str], review_count: int, min_project_size: Optional[str]) -> int:
+def compute_lead_score(rating_str: str | None, review_count: int, min_project_size: str | None) -> int:
     """Computes a lead quality score (1-100) based on agency metrics."""
     score = 50
     try:

@@ -1,7 +1,8 @@
-.PHONY: help dev down clean install dagster compose-up compose-down validate-bundles
+.PHONY: help dev down clean install dagster compose-up compose-down validate-bundles check
 
 help:
 	@echo "Available commands:"
+	@echo "  make check        - Same checks as CI (ruff + pytest + validate + build)"
 	@echo "  make dev          - Run project in local Kubernetes via Tilt"
 	@echo "  make down         - Stop local Kubernetes resources via Tilt"
 	@echo "  make compose-up   - Start full stack locally via Docker Compose"
@@ -29,6 +30,13 @@ compose-down:
 
 validate-bundles:
 	uv run harbor bundle validate
+
+check:
+	uv run ruff check apps bundles extractors tests
+	PYTHONPATH=. uv run pytest tests/ -q --tb=short
+	PYTHONPATH=. uv run harbor bundle validate
+	PYTHONPATH=. uv run harbor extractor validate
+	uv build
 
 dagster:
 	mkdir -p /tmp/dagster_home && uv run python -m apps.dagster_app.run_dev

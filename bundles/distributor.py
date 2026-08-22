@@ -1,12 +1,12 @@
-import os
-import shutil
-import tarfile
-import zipfile
 import json
 import logging
+import os
+import shutil
 import subprocess
-import urllib.request
-from typing import Dict, Any, List, Optional
+import tarfile
+import zipfile
+from typing import Any
+
 from bundles.validator import BundleValidator
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ class BundleDistributor:
     def __init__(self, bundles_dir: str = BUNDLES_DIR):
         self.bundles_dir = bundles_dir
 
-    def list_bundles(self) -> List[Dict[str, Any]]:
+    def list_bundles(self) -> list[dict[str, Any]]:
         """Lists all installed bundles with metadata and validation status."""
         bundles_info = []
         if not os.path.exists(self.bundles_dir):
@@ -32,7 +32,7 @@ class BundleDistributor:
                 manifest_data = {}
                 if os.path.exists(manifest_path):
                     try:
-                        with open(manifest_path, "r", encoding="utf-8") as f:
+                        with open(manifest_path, encoding="utf-8") as f:
                             manifest_data = json.load(f)
                     except Exception:
                         pass
@@ -64,11 +64,10 @@ class BundleDistributor:
 
         return bundles_info
 
-    def install_bundle(self, source: str, force: bool = False) -> Dict[str, Any]:
+    def install_bundle(self, source: str, force: bool = False) -> dict[str, Any]:
         """Installs a bundle from a Git URL, local directory, or tar.gz/zip archive."""
         logger.info(f"Installing bundle from source: {source}")
-        temp_target = None
-        
+
         try:
             # 1. Git Repository Source
             if source.endswith(".git") or source.startswith(("http://", "https://", "git@")) and not source.endswith((".zip", ".tar.gz", ".tgz")):
@@ -109,7 +108,7 @@ class BundleDistributor:
                     shutil.rmtree(temp_extract)
                     raise ValueError("Archive is missing 'manifest.json' file.")
 
-                with open(manifest_path, "r", encoding="utf-8") as f:
+                with open(manifest_path, encoding="utf-8") as f:
                     mdata = json.load(f)
                 
                 bundle_name = mdata.get("name", "custom_bundle").replace("-", "_")
@@ -131,7 +130,7 @@ class BundleDistributor:
                 if not os.path.exists(manifest_path):
                     raise ValueError(f"Local source directory '{source}' is missing 'manifest.json'.")
 
-                with open(manifest_path, "r", encoding="utf-8") as f:
+                with open(manifest_path, encoding="utf-8") as f:
                     mdata = json.load(f)
 
                 bundle_name = mdata.get("name", os.path.basename(source)).replace("-", "_")
@@ -168,7 +167,7 @@ class BundleDistributor:
             is_valid, errors = validator.validate()
             if not is_valid:
                 shutil.rmtree(target_path)
-                raise ValueError(f"Bundle validation failed post-installation:\n  - " + "\n  - ".join(errors))
+                raise ValueError("Bundle validation failed post-installation:\n  - " + "\n  - ".join(errors))
 
             return {
                 "status": "success",
@@ -182,7 +181,7 @@ class BundleDistributor:
             logger.error(f"Bundle installation failed: {e}")
             raise e
 
-    def resolve_extractors(self, bundle_name: str, force: bool = False) -> List[Dict[str, Any]]:
+    def resolve_extractors(self, bundle_name: str, force: bool = False) -> list[dict[str, Any]]:
         """Install/update extractors declared by an already-installed bundle."""
         from extractors.requirements import resolve_bundle_extractors
 
@@ -191,7 +190,7 @@ class BundleDistributor:
             raise ValueError(f"Bundle '{bundle_name}' is not installed.")
         return resolve_bundle_extractors(bundle_path, force=force)
 
-    def pack_bundle(self, bundle_name: str, output_dir: Optional[str] = None) -> str:
+    def pack_bundle(self, bundle_name: str, output_dir: str | None = None) -> str:
         """Packs a bundle into a clean distribution tar.gz archive."""
         bundle_path = os.path.join(self.bundles_dir, bundle_name)
         if not os.path.exists(bundle_path):
@@ -203,7 +202,7 @@ class BundleDistributor:
             raise ValueError(f"Cannot pack invalid bundle '{bundle_name}':\n  - " + "\n  - ".join(errors))
 
         manifest_path = os.path.join(bundle_path, "manifest.json")
-        with open(manifest_path, "r", encoding="utf-8") as f:
+        with open(manifest_path, encoding="utf-8") as f:
             mdata = json.load(f)
 
         version = mdata.get("version", "0.1.0")

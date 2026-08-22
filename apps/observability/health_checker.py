@@ -1,13 +1,14 @@
-import os
-import re
 import glob
 import json
 import logging
-from typing import Dict, Any, List, Tuple
+import os
+import re
 from datetime import datetime
+from typing import Any
+
 from apps.db.connection import get_db_cursor
-from apps.observability.metrics import init_metrics_db, record_scraper_execution
 from apps.observability.alerts import send_scraper_alert
+from apps.observability.metrics import init_metrics_db, record_scraper_execution
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ class ScraperHealthChecker:
     def __init__(self):
         init_metrics_db()
 
-    def get_bundle_observability_settings(self, bundle_name: str) -> Tuple[int, float]:
+    def get_bundle_observability_settings(self, bundle_name: str) -> tuple[int, float]:
         """Loads SLA hours and anomaly ratio threshold from manifest.json or defaults to .env."""
         sla_hours = DEFAULT_STALENESS_SLA_HOURS
         anomaly_ratio = DEFAULT_ANOMALY_THRESHOLD_RATIO
@@ -46,7 +47,7 @@ class ScraperHealthChecker:
         manifest_path = os.path.join(BUNDLES_DIR, bundle_name, "manifest.json")
         if os.path.exists(manifest_path):
             try:
-                with open(manifest_path, "r", encoding="utf-8") as f:
+                with open(manifest_path, encoding="utf-8") as f:
                     data = json.load(f)
                 obs = data.get("observability", {})
                 if "staleness_sla_hours" in obs:
@@ -58,7 +59,7 @@ class ScraperHealthChecker:
 
         return sla_hours, anomaly_ratio
 
-    def scan_dagster_stdout_logs(self) -> Dict[str, List[str]]:
+    def scan_dagster_stdout_logs(self) -> dict[str, list[str]]:
         """Scans Dagster process stdout/stderr log files for active errors and matches them to bundles."""
         dagster_home = os.getenv("DAGSTER_HOME", "/tmp/dagster_home")
         log_patterns = [
@@ -79,7 +80,7 @@ class ScraperHealthChecker:
                 if not os.path.isfile(log_file) or os.path.getsize(log_file) == 0:
                     continue
                 
-                with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                with open(log_file, encoding="utf-8", errors="ignore") as f:
                     # Read last 300 lines of process stdout/stderr
                     lines = f.readlines()[-300:]
 
@@ -118,7 +119,7 @@ class ScraperHealthChecker:
         except Exception as e:
             logger.debug(f"Could not audit/cancel orphaned Dagster runs: {e}")
 
-    def check_all_scrapers_health(self) -> List[Dict[str, Any]]:
+    def check_all_scrapers_health(self) -> list[dict[str, Any]]:
         """Audits all scrapers using connection pool, Dagster process stdout monitoring, and per-bundle thresholds."""
         self.cleanup_orphaned_dagster_runs()
         rows = []
@@ -156,7 +157,7 @@ class ScraperHealthChecker:
             issues = []
 
             # Check 1: Dagster Process STDOUT / STDERR Errors
-            if bundle_name in stdout_errors_by_bundle and stdout_errors_by_bundle[bundle_name]:
+            if stdout_errors_by_bundle.get(bundle_name):
                 status = "DEGRADED"
                 top_err = stdout_errors_by_bundle[bundle_name][0]
                 issues.append(f"Dagster process STDOUT error detected: '{top_err}'")

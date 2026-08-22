@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 import typer
 
@@ -57,11 +56,11 @@ def validate_extractors() -> None:
 @app.command("new")
 def new_extractor(
     name: str = typer.Argument(..., help="Extractor name (Python identifier)"),
-    description: Optional[str] = typer.Option(None, "--description"),
-    domains: Optional[str] = typer.Option(
+    description: str | None = typer.Option(None, "--description"),
+    domains: str | None = typer.Option(
         None, "--domains", help="Comma-separated domains, e.g. linkedin.com"
     ),
-    path: Optional[str] = typer.Option(
+    path: str | None = typer.Option(
         None, "--path", help="Target directory (default: extractors/<name>)"
     ),
     force: bool = typer.Option(False, "--force"),
@@ -120,13 +119,13 @@ def resolve_for_bundle(
     for item in report:
         src = f" <- {item['source']}" if item.get("source") else ""
         print(f"• [{item['status']}] {item['name']}{src}")
-    print("")
+    print()
 
 
 @app.command("pack")
 def pack_extractor(
     extractor_name: str = typer.Argument(...),
-    output: Optional[str] = typer.Option(None, "--output"),
+    output: str | None = typer.Option(None, "--output"),
 ) -> None:
     """Pack extractor into a clean .tar.gz archive."""
     print(f"\n🔌 Packing DataHarbor Extractor: '{extractor_name}'...")
@@ -155,15 +154,15 @@ def remove_extractor(extractor_name: str = typer.Argument(...)) -> None:
 @app.command("publish")
 def publish_extractor(
     name: str = typer.Argument(..., help="Extractor directory name under extractors/"),
-    remote: Optional[str] = typer.Option(
+    remote: str | None = typer.Option(
         None, "--remote", help="Existing git remote URL (skips gh repo create)"
     ),
-    workdir: Optional[str] = typer.Option(
+    workdir: str | None = typer.Option(
         None,
         "--workdir",
         help="Permanent staging directory (default: temporary snapshot)",
     ),
-    repo_name: Optional[str] = typer.Option(
+    repo_name: str | None = typer.Option(
         None, "--repo-name", help="GitHub repo name (default: dh-extractor-<name>)"
     ),
     visibility: str = typer.Option(
@@ -209,7 +208,7 @@ def publish_extractor(
             print(f"   remote : {result['remote']}")
         if result.get("install_hint"):
             print(f"   next   : {result['install_hint']}")
-        print("")
+        print()
         return
 
     print(f"✨ {result['message']}")

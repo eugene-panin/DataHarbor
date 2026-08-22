@@ -1,6 +1,5 @@
-import os
 import logging
-from typing import Optional
+import os
 
 from apps.notifications.http_json import post_json
 
@@ -10,8 +9,8 @@ logger = logging.getLogger(__name__)
 def send_telegram_notification(
     text: str,
     is_step_notification: bool = False,
-    bot_token: Optional[str] = None,
-    chat_id: Optional[str] = None,
+    bot_token: str | None = None,
+    chat_id: str | None = None,
 ) -> bool:
     """Sends HTML-formatted notification messages directly via Telegram Bot API."""
     if is_step_notification and os.getenv("TELEGRAM_NOTIFY_EVERY_STEP", "true").lower() == "false":

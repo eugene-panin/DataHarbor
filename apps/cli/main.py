@@ -3,7 +3,15 @@ from __future__ import annotations
 
 import typer
 
-from apps.cli.commands import agent, backup, bundle, extractor, platform, skill, workspace
+from apps.cli.commands import (
+    agent,
+    backup,
+    bundle,
+    extractor,
+    platform,
+    skill,
+    workspace,
+)
 
 app = typer.Typer(
     name="harbor",

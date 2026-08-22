@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from apps.scraper.extractor_api import (
     DEFAULT_ENTRYPOINT,
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 EXTRACTORS_DIR = os.path.join(_PROJECT_ROOT, "extractors")
 
-_cache: Optional[Dict[str, Dict[str, Any]]] = None
+_cache: dict[str, dict[str, Any]] | None = None
 
 
 def get_extractors_dir() -> str:
@@ -38,9 +38,9 @@ def clear_registry_cache() -> None:
     _cache = None
 
 
-def _load_manifest(extractor_path: str) -> Dict[str, Any]:
+def _load_manifest(extractor_path: str) -> dict[str, Any]:
     manifest_path = os.path.join(extractor_path, "manifest.json")
-    with open(manifest_path, "r", encoding="utf-8") as f:
+    with open(manifest_path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -56,8 +56,8 @@ def _import_entrypoint(extractor_id: str, entrypoint: str):
     return getattr(module, attr_name), module
 
 
-def _discover() -> Dict[str, Dict[str, Any]]:
-    discovered: Dict[str, Dict[str, Any]] = {}
+def _discover() -> dict[str, dict[str, Any]]:
+    discovered: dict[str, dict[str, Any]] = {}
     if not os.path.isdir(EXTRACTORS_DIR):
         return discovered
 
@@ -82,7 +82,7 @@ def _discover() -> Dict[str, Dict[str, Any]]:
 
             domains = [str(d).lower() for d in (manifest.get("domains") or [])]
 
-            def _bound_parse(html: str, source_url: str, _fn=parse_fn) -> List[Dict[str, Any]]:
+            def _bound_parse(html: str, source_url: str, _fn=parse_fn) -> list[dict[str, Any]]:
                 records = _fn(html, source_url) or []
                 return ensure_source_url(list(records), source_url)
 
@@ -99,14 +99,14 @@ def _discover() -> Dict[str, Dict[str, Any]]:
     return discovered
 
 
-def _registry() -> Dict[str, Dict[str, Any]]:
+def _registry() -> dict[str, dict[str, Any]]:
     global _cache
     if _cache is None:
         _cache = _discover()
     return _cache
 
 
-def list_installed_extractors() -> List[Dict[str, Any]]:
+def list_installed_extractors() -> list[dict[str, Any]]:
     """Return metadata for every successfully loaded extractor plugin."""
     return [
         {
@@ -125,7 +125,7 @@ def is_extractor_installed(extractor_id: str) -> bool:
     return extractor_id.replace("-", "_") in _registry()
 
 
-def get_extractor_meta(extractor_id: str) -> Optional[Dict[str, Any]]:
+def get_extractor_meta(extractor_id: str) -> dict[str, Any] | None:
     return _registry().get(extractor_id.replace("-", "_"))
 
 
@@ -140,7 +140,7 @@ def require_extractor(extractor_id: str) -> ParseFn:
     return meta["parse"]
 
 
-def get_extractor(domain_or_id: str) -> Optional[ParseFn]:
+def get_extractor(domain_or_id: str) -> ParseFn | None:
     """Resolve parse callable by extractor id or by domain substring in URL/host."""
     key = (domain_or_id or "").strip().lower()
     if not key:
@@ -154,8 +154,7 @@ def get_extractor(domain_or_id: str) -> Optional[ParseFn]:
     # Strip scheme/path for URL lookups
     needle = key
     for prefix in ("https://", "http://", "www."):
-        if needle.startswith(prefix):
-            needle = needle[len(prefix):]
+        needle = needle.removeprefix(prefix)
     needle = needle.split("/")[0]
 
     for meta in registry.values():
@@ -167,7 +166,7 @@ def get_extractor(domain_or_id: str) -> Optional[ParseFn]:
     return None
 
 
-def generate_page_urls_for_domain(base_url: str, max_pages: int = 10) -> List[str]:
+def generate_page_urls_for_domain(base_url: str, max_pages: int = 10) -> list[str]:
     """Generate paginated URLs using the matching extractor, or a generic ?page= fallback."""
     registry = _registry()
     url_lower = (base_url or "").lower()

@@ -1,10 +1,9 @@
-import os
 import logging
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-def generate_winning_creative_script(cluster_id: int, cluster_items: List[Dict[str, Any]]) -> Dict[str, Any]:
+def generate_winning_creative_script(cluster_id: int, cluster_items: list[dict[str, Any]]) -> dict[str, Any]:
     """Analyzes a winning cluster of ad creatives and synthesizes a new ad script + AI visual prompt."""
     logger.info(f"Generating winning creative script for Cluster #{cluster_id} ({len(cluster_items)} items)...")
     

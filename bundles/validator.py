@@ -1,9 +1,9 @@
-import os
 import json
-import py_compile
 import logging
+import os
+import py_compile
 import re
-from typing import Dict, Any, List, Tuple
+from typing import Any
 
 from bundles.plugin_contract import validate_manifest_contract
 
@@ -17,7 +17,6 @@ _EXTRACTOR_ID_RE = re.compile(
 
 class BundleValidationError(Exception):
     """Exception raised when bundle validation fails."""
-    pass
 
 
 class BundleValidator:
@@ -27,11 +26,11 @@ class BundleValidator:
         self.bundle_path = bundle_path
         self.bundle_name = os.path.basename(bundle_path)
 
-    def validate(self) -> Tuple[bool, List[str]]:
+    def validate(self) -> tuple[bool, list[str]]:
         """Executes all validation checks. Returns (is_valid, error_messages)."""
         errors = []
-        manifest_data: Dict[str, Any] = {}
-        declared_names: List[str] = []
+        manifest_data: dict[str, Any] = {}
+        declared_names: list[str] = []
 
         # Check 1: Directory name syntax
         if not self.bundle_name.isidentifier():
@@ -45,7 +44,7 @@ class BundleValidator:
             errors.append(f"Missing required 'manifest.json' file in bundle '{self.bundle_name}'.")
         else:
             try:
-                with open(manifest_path, "r", encoding="utf-8") as f:
+                with open(manifest_path, encoding="utf-8") as f:
                     manifest_data = json.load(f)
             except Exception as e:
                 errors.append(
@@ -85,8 +84,8 @@ class BundleValidator:
             )
         elif raw_extractors:
             try:
-                from extractors.requirements import parse_extractor_requirements
                 from apps.scraper.extractors.registry import is_extractor_installed
+                from extractors.requirements import parse_extractor_requirements
                 from extractors.validator import EXTRACTORS_DIR, ExtractorValidator
 
                 requirements = parse_extractor_requirements(raw_extractors)
@@ -130,7 +129,7 @@ class BundleValidator:
         scraper_path = os.path.join(self.bundle_path, "scraper.py")
         if os.path.exists(scraper_path):
             try:
-                with open(scraper_path, "r", encoding="utf-8") as f:
+                with open(scraper_path, encoding="utf-8") as f:
                     scraper_code = f.read()
                 referenced = set(_EXTRACTOR_ID_RE.findall(scraper_code))
                 declared_set = set(declared_names)
@@ -160,7 +159,7 @@ class BundleValidator:
         return is_valid, errors
 
 
-def validate_all_bundles(bundles_dir: str) -> Dict[str, Tuple[bool, List[str]]]:
+def validate_all_bundles(bundles_dir: str) -> dict[str, tuple[bool, list[str]]]:
     """Validates all bundle folders in bundles_dir."""
     results = {}
     if not os.path.exists(bundles_dir):

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 import py_compile
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from apps.scraper.extractor_api import REQUIRED_MANIFEST_KEYS, resolve_entrypoint
 
@@ -19,9 +19,9 @@ class ExtractorValidator:
         self.extractor_path = extractor_path
         self.extractor_name = os.path.basename(extractor_path)
 
-    def validate(self) -> Tuple[bool, List[str]]:
-        errors: List[str] = []
-        manifest_data: Dict[str, Any] = {}
+    def validate(self) -> tuple[bool, list[str]]:
+        errors: list[str] = []
+        manifest_data: dict[str, Any] = {}
 
         if not self.extractor_name.isidentifier():
             errors.append(
@@ -35,7 +35,7 @@ class ExtractorValidator:
             return False, errors
 
         try:
-            with open(manifest_path, "r", encoding="utf-8") as f:
+            with open(manifest_path, encoding="utf-8") as f:
                 manifest_data = json.load(f)
         except Exception as e:
             errors.append(f"Invalid JSON in 'manifest.json' for '{self.extractor_name}': {e}")
@@ -102,9 +102,9 @@ class ExtractorValidator:
         return len(errors) == 0, errors
 
 
-def validate_all_extractors(extractors_dir: str = EXTRACTORS_DIR) -> Dict[str, Tuple[bool, List[str]]]:
+def validate_all_extractors(extractors_dir: str = EXTRACTORS_DIR) -> dict[str, tuple[bool, list[str]]]:
     """Validate all extractor folders under extractors_dir."""
-    results: Dict[str, Tuple[bool, List[str]]] = {}
+    results: dict[str, tuple[bool, list[str]]] = {}
     if not os.path.exists(extractors_dir):
         return results
 

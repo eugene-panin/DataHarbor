@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 from pathlib import Path
 
@@ -17,7 +16,6 @@ from bundles.plugin_contract import (
     validate_manifest_contract,
 )
 from bundles.scaffold import create_bundle
-
 
 BUNDLES_ROOT = Path(__file__).resolve().parents[1] / "bundles"
 

@@ -1,5 +1,7 @@
 import logging
-from dagster import sensor, RunRequest, SkipReason, SensorEvaluationContext
+
+from dagster import RunRequest, SensorEvaluationContext, SkipReason, sensor
+
 from apps.observability.health_checker import ScraperHealthChecker
 
 logger = logging.getLogger(__name__)

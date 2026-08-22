@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 import boto3
 from botocore.client import Config
@@ -30,7 +30,7 @@ def get_s3_client():
     )
 
 
-def upload_payload_to_s3(key: str, data: Dict[str, Any]) -> str:
+def upload_payload_to_s3(key: str, data: dict[str, Any]) -> str:
     """Upload a JSON payload to the configured bucket."""
     bucket_name = os.getenv("S3_BUCKET_NAME", "dataharbor-raw")
     client = get_s3_client()
@@ -62,7 +62,7 @@ def download_media_stream_to_s3(
     media_url: str,
     s3_key: str,
     content_type: str = "video/mp4",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Stream a remote media URL into S3."""
     from urllib.request import urlopen
 

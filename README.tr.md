@@ -1,5 +1,7 @@
 # 🌊 DataHarbor
 
+[![CI](https://github.com/eugene-panin/DataHarbor/actions/workflows/ci.yml/badge.svg)](https://github.com/eugene-panin/DataHarbor/actions/workflows/ci.yml)
+
 **DataHarbor**, 360° yapay zekâ analitiği (Whisper speech-to-text, EasyOCR, vektör gömmeleri, ClickHouse OLAP, HDBSCAN kümeleme) ve otonom scraper kendi kendini onarma (modele bağımlı olmayan AI auto-remediation ve HAP v1.0) sunan modüler bir open-core veri platformudur.
 
 > **Diller / Languages:** [🇬🇧 English](README.md) · [🇷🇺 Русский](README.ru.md) · [🇺🇦 Українська](README.uk.md) · [🇪🇸 Español](README.es.md) · 🇹🇷 Türkçe
@@ -114,7 +116,8 @@ harbor agent-protocol test <bnd>
 ### 4. Bundles
 ```bash
 harbor bundle list
-harbor bundle new <name> [--extractors id1,id2]
+harbor bundle new <name> [--template default|ml|etl|dagster]
+harbor bundle templates
 harbor bundle install <src>   # Git / archive / folder; bildirilen extractors’ı çeker
 harbor bundle resolve <name>  # Manifest’ten eksik extractors’ı kur
 harbor bundle pack <name>

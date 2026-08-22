@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 import typer
 
@@ -11,7 +10,7 @@ app = typer.Typer(help="Master backup and restore engine", no_args_is_help=True)
 
 @app.command("create")
 def create_backup(
-    output: Optional[str] = typer.Option(None, "--output", help="Output directory"),
+    output: str | None = typer.Option(None, "--output", help="Output directory"),
 ) -> None:
     """Create a full platform master backup archive."""
     from apps.backup.backup_engine import BACKUPS_DIR, MasterBackupEngine
@@ -52,4 +51,4 @@ def list_backups() -> None:
             print("No backups found in backups/ directory.")
     else:
         print("No backups directory found.")
-    print("")
+    print()

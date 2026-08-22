@@ -1,9 +1,7 @@
-import os
 import logging
-from datetime import datetime
-from typing import Dict, Any, Optional
-from apps.db.connection import get_db_cursor
+
 from apps.db.clickhouse_client import get_clickhouse_client, insert_batch
+from apps.db.connection import get_db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +73,7 @@ def record_scraper_execution(
     http_403_count: int = 0,
     http_429_count: int = 0,
     http_500_count: int = 0,
-    error_message: Optional[str] = None
+    error_message: str | None = None
 ) -> int:
     """Records a scraper execution metric log into PostgreSQL connection pool & ClickHouse batch engine."""
     init_metrics_db()

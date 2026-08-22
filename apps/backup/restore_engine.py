@@ -1,15 +1,14 @@
-import os
-import sys
-import json
 import gzip
-import shutil
-import tarfile
+import json
 import logging
+import os
+import shutil
 import subprocess
-from datetime import datetime
-from typing import Dict, Any
-from apps.db.connection import get_db_cursor, get_connection_params
-from apps.db.clickhouse_client import get_clickhouse_client, insert_batch
+import sys
+import tarfile
+
+from apps.db.clickhouse_client import insert_batch
+from apps.db.connection import get_connection_params, get_db_cursor
 from apps.storage.s3 import get_s3_client
 
 logger = logging.getLogger(__name__)

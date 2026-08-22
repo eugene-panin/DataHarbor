@@ -8,7 +8,7 @@ Core itself does not depend on torch / whisper / easyocr.
 """
 from __future__ import annotations
 
-from typing import Iterable, List
+from collections.abc import Iterable
 
 ML_EXTRA_HINT = (
     "Optional ML dependency missing. Install with: uv sync --extra ml "
@@ -37,7 +37,7 @@ def require_ml(*packages: str) -> None:
     """Raise ImportError with install hint if required ML packages are missing."""
     import importlib.util
 
-    missing: List[str] = [
+    missing: list[str] = [
         name for name in packages if importlib.util.find_spec(name) is None
     ]
     if missing:

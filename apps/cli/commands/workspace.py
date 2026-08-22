@@ -63,7 +63,7 @@ def show_workspace(
 
     import yaml
 
-    with open(target, "r", encoding="utf-8") as f:
+    with open(target, encoding="utf-8") as f:
         doc = yaml.safe_load(f) or {}
     names = location_names(doc)
     print("\n🗂️  Dagster code locations:")
