@@ -6,8 +6,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from bundles.doctor import doctor_bundle, format_doctor_report
-from bundles.scaffold import create_bundle
+from apps.bundle.doctor import doctor_bundle, format_doctor_report
+from apps.bundle.scaffold import create_bundle
 
 BUNDLES_ROOT = Path(__file__).resolve().parents[1] / "bundles"
 

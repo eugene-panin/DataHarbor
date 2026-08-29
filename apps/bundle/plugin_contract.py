@@ -17,18 +17,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_DAGSTER_ENTRYPOINT = "assets:defs"
 _ENTRYPOINT_RE = re.compile(r"^([A-Za-z_][\w]*)(?::([A-Za-z_][\w]*))?$")
 
-# Top-level packages under bundles/ that are Core helpers, not installable plugins.
-CORE_BUNDLE_PACKAGE_NAMES = frozenset(
-    {
-        "cli",
-        "distributor",
-        "doctor",
-        "loader",
-        "plugin_contract",
-        "scaffold",
-        "validator",
-    }
-)
+# Legacy: bundles/ no longer ships Core helpers; kept empty for old tooling.
+CORE_BUNDLE_PACKAGE_NAMES = frozenset()
 
 
 class BundleContractError(Exception):

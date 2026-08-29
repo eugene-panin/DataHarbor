@@ -6,9 +6,8 @@ import os
 import re
 from typing import Any
 
-from extractors.validator import ExtractorValidator
-
-EXTRACTORS_DIR = os.path.dirname(os.path.abspath(__file__))
+from apps.extractor.paths import EXTRACTORS_DIR
+from apps.extractor.validator import ExtractorValidator
 
 
 def _normalize_name(name: str) -> str:
@@ -22,9 +21,44 @@ def _normalize_name(name: str) -> str:
 
 
 def _write(path: str, content: str) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
+
+
+def _write_plugin_tests(root: str, extractor_name: str) -> list[str]:
+    """Co-located pytest scaffold — travels with the plugin on publish."""
+    tests_dir = os.path.join(root, "tests")
+    _write(os.path.join(tests_dir, "__init__.py"), '"""Extractor plugin tests."""\n')
+    _write(
+        os.path.join(tests_dir, "test_plugin.py"),
+        f'''"""Tests for `{extractor_name}` extractor (co-located with the plugin)."""
+from __future__ import annotations
+
+from pathlib import Path
+
+from apps.extractor.validator import ExtractorValidator
+
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_extractor_validates():
+    is_valid, errors = ExtractorValidator(str(PLUGIN_ROOT)).validate()
+    assert is_valid, errors
+
+
+def test_parse_returns_source_url():
+    from extractors.{extractor_name}.extractor import parse
+
+    html = "<html><body><h1>Sample title</h1></body></html>"
+    records = parse(html, "https://{extractor_name}.example/list")
+    assert records
+    assert records[0]["source_url"] == "https://{extractor_name}.example/list"
+''',
+    )
+    return ["tests/__init__.py", "tests/test_plugin.py"]
 
 
 def create_extractor(
@@ -115,6 +149,7 @@ def generate_page_urls(base_url: str, max_pages: int = 10) -> List[str]:
     return urls
 '''
     _write(os.path.join(root, "extractor.py"), code)
+    test_files = _write_plugin_tests(root, extractor_name)
 
     is_valid, errors = ExtractorValidator(root).validate()
     if not is_valid:
@@ -133,6 +168,6 @@ def generate_page_urls(base_url: str, max_pages: int = 10) -> List[str]:
         "status": "success",
         "extractor_name": extractor_name,
         "path": root,
-        "files": ["manifest.json", "__init__.py", "extractor.py"],
+        "files": ["manifest.json", "__init__.py", "extractor.py", *test_files],
         "message": f"Extractor scaffold '{extractor_name}' created at {root}",
     }

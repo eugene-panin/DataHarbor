@@ -8,10 +8,10 @@ import subprocess
 
 import typer
 
+from apps.bundle.distributor import BundleDistributor
+from apps.bundle.validator import validate_all_bundles
 from apps.cli.commands.platform import check_active_runtime
 from apps.cli.paths import PROJECT_ROOT
-from bundles.distributor import BundleDistributor
-from bundles.validator import validate_all_bundles
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def _render_bundle_snapshot(bundle_name: str, runtime: str = "auto") -> str:
     marker = "__DATAHARBOR_EXPORT_BASE64__:"
     script = (
         "import base64\n"
-        "from bundles.distributor import BundleDistributor\n"
+        "from apps.bundle.distributor import BundleDistributor\n"
         f"html = BundleDistributor().render_bundle_exporter({bundle_name!r})\n"
         f"print({marker!r} + base64.b64encode(html.encode('utf-8')).decode('ascii'))\n"
     )
@@ -106,6 +106,11 @@ def validate_bundles() -> None:
     print("\n📦 VALIDATING DATAHARBOR BUNDLES:")
     print("=" * 60)
     results = validate_all_bundles(os.path.join(PROJECT_ROOT, "bundles"))
+    if not results:
+        print("ℹ️  No bundles installed under bundles/ (open-core ships none).")
+        print("    Install with: harbor bundle install <git-url>")
+        print("=" * 60 + "\n")
+        return
     failed = False
     for name, (is_valid, errors) in sorted(results.items()):
         symbol = "✅" if is_valid else "❌"
@@ -127,7 +132,7 @@ def doctor_bundle_cmd(
     ),
 ) -> None:
     """Diagnose engines, python deps, extractors, and Dagster entrypoint."""
-    from bundles.doctor import doctor_all_bundles, doctor_bundle, format_doctor_report
+    from apps.bundle.doctor import doctor_all_bundles, doctor_bundle, format_doctor_report
 
     print("\n🩺 DATAHARBOR BUNDLE DOCTOR")
     print("=" * 60)
@@ -159,7 +164,7 @@ def doctor_bundle_cmd(
 @app.command("templates")
 def list_templates_cmd() -> None:
     """List available bundle scaffold templates."""
-    from bundles.scaffold import list_bundle_templates
+    from apps.bundle.scaffold import list_bundle_templates
 
     print("\n📦 BUNDLE SCAFFOLD TEMPLATES:")
     print("=" * 60)
@@ -178,7 +183,7 @@ def new_bundle(
         "default",
         "--template",
         "-t",
-        help="Scaffold template: default | ml | etl | dagster",
+        help="Scaffold template: default | ml | etl | dagster | catalog",
     ),
     description: str | None = typer.Option(None, "--description"),
     category: str = typer.Option("custom", "--category"),
@@ -191,7 +196,7 @@ def new_bundle(
     force: bool = typer.Option(False, "--force", help="Overwrite existing path"),
 ) -> None:
     """Scaffold a new bundle from a template."""
-    from bundles.scaffold import create_bundle
+    from apps.bundle.scaffold import create_bundle
 
     extractor_list = [x.strip() for x in (extractors or "").split(",") if x.strip()]
     print(f"\n📦 Creating bundle scaffold '{name}' (template: {template})...")

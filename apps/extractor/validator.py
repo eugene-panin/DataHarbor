@@ -6,10 +6,8 @@ import os
 import py_compile
 from typing import Any
 
+from apps.extractor.paths import EXTRACTORS_DIR
 from apps.scraper.extractor_api import REQUIRED_MANIFEST_KEYS, resolve_entrypoint
-
-EXTRACTORS_DIR = os.path.dirname(os.path.abspath(__file__))
-_PROJECT_ROOT = os.path.dirname(EXTRACTORS_DIR)
 
 
 class ExtractorValidator:
@@ -103,13 +101,14 @@ class ExtractorValidator:
 
 
 def validate_all_extractors(extractors_dir: str = EXTRACTORS_DIR) -> dict[str, tuple[bool, list[str]]]:
-    """Validate all extractor folders under extractors_dir."""
+    """Validate installed extractor folders (directories with manifest.json)."""
     results: dict[str, tuple[bool, list[str]]] = {}
     if not os.path.exists(extractors_dir):
         return results
 
     for entry in sorted(os.listdir(extractors_dir)):
         extractor_path = os.path.join(extractors_dir, entry)
-        if os.path.isdir(extractor_path) and not entry.startswith((".", "_")):
+        manifest_path = os.path.join(extractor_path, "manifest.json")
+        if os.path.isdir(extractor_path) and os.path.isfile(manifest_path):
             results[entry] = ExtractorValidator(extractor_path).validate()
     return results

@@ -62,7 +62,7 @@ class PublishDryRunTests(unittest.TestCase):
             publish_plugin("extractor", "demo_site", visibility="secret", dry_run=True)
 
     def test_find_unpublished_skips_core_ids(self):
-        from extractors.requirements import find_unpublished_local_extractors
+        from apps.extractor.requirements import find_unpublished_local_extractors
 
         with tempfile.TemporaryDirectory() as tmp:
             with open(os.path.join(tmp, "manifest.json"), "w", encoding="utf-8") as f:
@@ -76,7 +76,7 @@ class PublishDryRunTests(unittest.TestCase):
             self.assertIn("custom_local", names)
 
     def test_bundle_publish_blocks_on_local_extractors(self):
-        from extractors.requirements import find_unpublished_local_extractors
+        from apps.extractor.requirements import find_unpublished_local_extractors
 
         with tempfile.TemporaryDirectory() as tmp:
             with open(os.path.join(tmp, "manifest.json"), "w", encoding="utf-8") as f:

@@ -9,7 +9,8 @@ from typing import Any
 
 from packaging.requirements import InvalidRequirement, Requirement
 
-from bundles.plugin_contract import (
+from apps.bundle.paths import BUNDLES_DIR
+from apps.bundle.plugin_contract import (
     BundleContractError,
     check_engines,
     iter_bundle_dirs,
@@ -18,9 +19,7 @@ from bundles.plugin_contract import (
     platform_version,
     resolve_dagster_entrypoint,
 )
-from bundles.validator import BundleValidator
-
-BUNDLES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bundles")
+from apps.bundle.validator import BundleValidator
 
 
 @dataclass
@@ -126,9 +125,9 @@ def _check_extractors(manifest: dict[str, Any], bundle_name: str) -> list[CheckR
         return [CheckResult("extractors", "skip", "none declared")]
 
     try:
+        from apps.extractor.requirements import parse_extractor_requirements
+        from apps.extractor.validator import EXTRACTORS_DIR, ExtractorValidator
         from apps.scraper.extractors.registry import is_extractor_installed
-        from extractors.requirements import parse_extractor_requirements
-        from extractors.validator import EXTRACTORS_DIR, ExtractorValidator
     except Exception as e:
         return [CheckResult("extractors", "fail", f"cannot load extractor tooling: {e}")]
 

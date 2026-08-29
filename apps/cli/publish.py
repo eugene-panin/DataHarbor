@@ -145,11 +145,11 @@ def _plugin_root(kind: PluginKind, name: str) -> str:
 
 def _validate_plugin(kind: PluginKind, path: str) -> None:
     if kind == "bundle":
-        from bundles.validator import BundleValidator
+        from apps.bundle.validator import BundleValidator
 
         ok, errors = BundleValidator(path).validate()
     else:
-        from extractors.validator import ExtractorValidator
+        from apps.extractor.validator import ExtractorValidator
 
         ok, errors = ExtractorValidator(path).validate()
     if not ok:
@@ -254,7 +254,7 @@ def publish_plugin(
 
     unpublished: list[dict[str, Any]] = []
     if kind == "bundle":
-        from extractors.requirements import find_unpublished_local_extractors
+        from apps.extractor.requirements import find_unpublished_local_extractors
 
         unpublished = find_unpublished_local_extractors(source)
         if unpublished and not allow_local_extractors and not dry_run:

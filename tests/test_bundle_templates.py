@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from bundles.scaffold import create_bundle, list_bundle_templates, resolve_template
+from apps.bundle.scaffold import create_bundle, list_bundle_templates, resolve_template
 
 BUNDLES_ROOT = Path(__file__).resolve().parents[1] / "bundles"
 
@@ -22,7 +22,7 @@ def _cleanup(name: str) -> None:
             del sys.modules[key]
 
 
-@pytest.mark.parametrize("template_id", ["default", "ml", "etl", "dagster"])
+@pytest.mark.parametrize("template_id", ["default", "ml", "etl", "dagster", "catalog"])
 def test_create_bundle_templates_validate(template_id: str):
     name = f"zz_tpl_{template_id}"
     _cleanup(name)
@@ -32,13 +32,20 @@ def test_create_bundle_templates_validate(template_id: str):
         root = Path(result["path"])
         assert (root / "manifest.json").exists()
         assert (root / "assets.py").exists()
+        assert (root / "tests" / "test_plugin.py").exists()
         if template_id == "default":
             assert (root / "scraper.py").exists()
             assert (root / "fetch.py").exists()
         if template_id in ("default", "ml", "etl"):
             assert (root / "db.py").exists()
-        if template_id in ("ml", "etl", "dagster"):
+        if template_id in ("ml", "etl", "dagster", "catalog"):
             assert not (root / "scraper.py").exists()
+        if template_id == "catalog":
+            assert (root / "ingest.py").exists()
+            assert (root / "validate.py").exists()
+            assert (root / "export.py").exists()
+            assert (root / "quarantine.py").exists()
+            assert (root / "dogs" / "__init__.py").exists()
     finally:
         _cleanup(name)
 
@@ -50,4 +57,4 @@ def test_unknown_template_raises():
 
 def test_list_templates_has_default():
     ids = {t.id for t in list_bundle_templates()}
-    assert {"default", "ml", "etl", "dagster"}.issubset(ids)
+    assert {"default", "ml", "etl", "dagster", "catalog"}.issubset(ids)

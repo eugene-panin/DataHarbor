@@ -6,16 +6,15 @@ import os
 
 from dagster import Definitions
 
-from bundles.plugin_contract import (
+from apps.bundle.paths import BUNDLES_DIR
+from apps.bundle.plugin_contract import (
     BundleContractError,
     iter_bundle_dirs,
     load_bundle_definitions_object,
 )
-from bundles.validator import BundleValidator
+from apps.bundle.validator import BundleValidator
 
 logger = logging.getLogger(__name__)
-
-BUNDLES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bundles")
 
 
 def _skip_invalid_enabled(explicit: bool | None = None) -> bool:

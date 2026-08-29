@@ -10,11 +10,10 @@ import tarfile
 import zipfile
 from typing import Any
 
-from extractors.validator import ExtractorValidator
+from apps.extractor.paths import EXTRACTORS_DIR
+from apps.extractor.validator import ExtractorValidator
 
 logger = logging.getLogger(__name__)
-
-EXTRACTORS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 class ExtractorDistributor:

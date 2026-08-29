@@ -6,6 +6,14 @@ import tempfile
 import textwrap
 import unittest
 
+from apps.bundle.validator import BundleValidator
+from apps.extractor.requirements import (
+    derive_extractor_name_from_source,
+    parse_extractor_requirement,
+    parse_extractor_requirements,
+    resolve_bundle_extractors,
+)
+from apps.extractor.validator import EXTRACTORS_DIR, ExtractorValidator
 from apps.scraper.extractors.registry import (
     clear_registry_cache,
     generate_page_urls_for_domain,
@@ -13,14 +21,6 @@ from apps.scraper.extractors.registry import (
     list_installed_extractors,
     require_extractor,
 )
-from bundles.validator import BundleValidator
-from extractors.requirements import (
-    derive_extractor_name_from_source,
-    parse_extractor_requirement,
-    parse_extractor_requirements,
-    resolve_bundle_extractors,
-)
-from extractors.validator import EXTRACTORS_DIR, ExtractorValidator
 
 
 class ExtractorRegistryTests(unittest.TestCase):

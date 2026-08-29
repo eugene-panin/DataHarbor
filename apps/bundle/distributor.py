@@ -7,11 +7,11 @@ import tarfile
 import zipfile
 from typing import Any
 
-from bundles.validator import BundleValidator
+from apps.bundle.paths import BUNDLES_DIR
+from apps.bundle.validator import BundleValidator
 
 logger = logging.getLogger(__name__)
 
-BUNDLES_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class BundleDistributor:
     """Manages installation, packaging, listing, updating, and removal of DataHarbor bundles."""
@@ -110,7 +110,7 @@ class BundleDistributor:
 
                 with open(manifest_path, encoding="utf-8") as f:
                     mdata = json.load(f)
-                
+
                 bundle_name = mdata.get("name", "custom_bundle").replace("-", "_")
                 target_path = os.path.join(self.bundles_dir, bundle_name)
 
@@ -147,7 +147,7 @@ class BundleDistributor:
                 raise ValueError(f"Unsupported bundle installation source: {source}")
 
             # Auto-install extractors declared with source URLs in the bundle manifest
-            from extractors.requirements import resolve_bundle_extractors
+            from apps.extractor.requirements import resolve_bundle_extractors
 
             try:
                 extractor_report = resolve_bundle_extractors(target_path, force=force)
@@ -183,7 +183,7 @@ class BundleDistributor:
 
     def resolve_extractors(self, bundle_name: str, force: bool = False) -> list[dict[str, Any]]:
         """Install/update extractors declared by an already-installed bundle."""
-        from extractors.requirements import resolve_bundle_extractors
+        from apps.extractor.requirements import resolve_bundle_extractors
 
         bundle_path = os.path.join(self.bundles_dir, bundle_name)
         if not os.path.exists(bundle_path):
@@ -249,4 +249,3 @@ class BundleDistributor:
             return exporter_module.generate_report(db_conn=db_conn, clickhouse_client=clickhouse_client)
         else:
             raise ValueError(f"Bundle exporter '{module_name}' is missing required 'generate_report()' entry point.")
-

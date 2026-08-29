@@ -5,10 +5,10 @@ import os
 
 import typer
 
+from apps.bundle.distributor import BundleDistributor
 from apps.cli.paths import PROJECT_ROOT
-from bundles.distributor import BundleDistributor
-from extractors.distributor import ExtractorDistributor
-from extractors.validator import validate_all_extractors
+from apps.extractor.distributor import ExtractorDistributor
+from apps.extractor.validator import validate_all_extractors
 
 app = typer.Typer(help="Manage separately distributed resource extractors", no_args_is_help=True)
 
@@ -38,7 +38,9 @@ def validate_extractors() -> None:
     print("=" * 60)
     results = validate_all_extractors(os.path.join(PROJECT_ROOT, "extractors"))
     if not results:
-        print("No extractors found.\n")
+        print("ℹ️  No extractors installed under extractors/ (open-core ships demo_site only).")
+        print("    Install with: harbor extractor install <git-url>")
+        print("=" * 60 + "\n")
         return
     failed = False
     for name, (is_valid, errors) in results.items():
@@ -66,7 +68,7 @@ def new_extractor(
     force: bool = typer.Option(False, "--force"),
 ) -> None:
     """Scaffold a new resource extractor."""
-    from extractors.scaffold import create_extractor
+    from apps.extractor.scaffold import create_extractor
 
     domain_list = [x.strip() for x in (domains or "").split(",") if x.strip()]
     print(f"\n🔌 Creating extractor scaffold '{name}'...")

@@ -8,14 +8,14 @@ from pathlib import Path
 import pytest
 from dagster import Definitions, asset
 
-from bundles.loader import discover_bundle_definitions, merge_bundle_definitions
-from bundles.plugin_contract import (
+from apps.bundle.loader import discover_bundle_definitions, merge_bundle_definitions
+from apps.bundle.plugin_contract import (
     BundleContractError,
     check_engines,
     resolve_dagster_entrypoint,
     validate_manifest_contract,
 )
-from bundles.scaffold import create_bundle
+from apps.bundle.scaffold import create_bundle
 
 BUNDLES_ROOT = Path(__file__).resolve().parents[1] / "bundles"
 

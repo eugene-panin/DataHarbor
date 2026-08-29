@@ -8,6 +8,8 @@ import os
 import sys
 from typing import Any
 
+from apps.cli.paths import PROJECT_ROOT
+from apps.extractor.paths import EXTRACTORS_DIR
 from apps.scraper.extractor_api import (
     DEFAULT_ENTRYPOINT,
     ParseFn,
@@ -17,9 +19,6 @@ from apps.scraper.extractor_api import (
 
 logger = logging.getLogger(__name__)
 
-_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-EXTRACTORS_DIR = os.path.join(_PROJECT_ROOT, "extractors")
-
 _cache: dict[str, dict[str, Any]] | None = None
 
 
@@ -28,8 +27,8 @@ def get_extractors_dir() -> str:
 
 
 def _ensure_project_root_on_path() -> None:
-    if _PROJECT_ROOT not in sys.path:
-        sys.path.insert(0, _PROJECT_ROOT)
+    if PROJECT_ROOT not in sys.path:
+        sys.path.insert(0, PROJECT_ROOT)
 
 
 def clear_registry_cache() -> None:

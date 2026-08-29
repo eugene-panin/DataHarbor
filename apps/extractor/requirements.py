@@ -176,12 +176,12 @@ def resolve_bundle_extractors(
     Entries without ``source`` must already exist under ``extractors/``
     (core/platform extractors or previously installed plugins).
     """
+    from apps.extractor.distributor import ExtractorDistributor
+    from apps.extractor.paths import EXTRACTORS_DIR
     from apps.scraper.extractors.registry import (
         clear_registry_cache,
         is_extractor_installed,
     )
-    from extractors.distributor import ExtractorDistributor
-    from extractors.validator import EXTRACTORS_DIR
 
     manifest_path = os.path.join(bundle_path, "manifest.json")
     if not os.path.exists(manifest_path):

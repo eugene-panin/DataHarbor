@@ -5,7 +5,7 @@ import py_compile
 import re
 from typing import Any
 
-from bundles.plugin_contract import validate_manifest_contract
+from apps.bundle.plugin_contract import validate_manifest_contract
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +84,9 @@ class BundleValidator:
             )
         elif raw_extractors:
             try:
+                from apps.extractor.requirements import parse_extractor_requirements
+                from apps.extractor.validator import EXTRACTORS_DIR, ExtractorValidator
                 from apps.scraper.extractors.registry import is_extractor_installed
-                from extractors.requirements import parse_extractor_requirements
-                from extractors.validator import EXTRACTORS_DIR, ExtractorValidator
 
                 requirements = parse_extractor_requirements(raw_extractors)
                 declared_names = [req["name"] for req in requirements if req.get("name")]
@@ -160,15 +160,15 @@ class BundleValidator:
 
 
 def validate_all_bundles(bundles_dir: str) -> dict[str, tuple[bool, list[str]]]:
-    """Validates all bundle folders in bundles_dir."""
+    """Validates installed bundle folders (directories with manifest.json)."""
     results = {}
     if not os.path.exists(bundles_dir):
         return results
 
-    for entry in os.listdir(bundles_dir):
+    for entry in sorted(os.listdir(bundles_dir)):
         bundle_path = os.path.join(bundles_dir, entry)
-        if os.path.isdir(bundle_path) and not entry.startswith((".", "_")):
-            validator = BundleValidator(bundle_path)
-            results[entry] = validator.validate()
+        manifest_path = os.path.join(bundle_path, "manifest.json")
+        if os.path.isdir(bundle_path) and os.path.isfile(manifest_path):
+            results[entry] = BundleValidator(bundle_path).validate()
 
     return results

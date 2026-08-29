@@ -3,10 +3,10 @@ import importlib
 import os
 import sys
 
-from bundles.distributor import BundleDistributor
-from bundles.validator import validate_all_bundles
+from apps.bundle.distributor import BundleDistributor
+from apps.bundle.paths import BUNDLES_DIR
+from apps.bundle.validator import validate_all_bundles
 
-BUNDLES_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def list_bundles():
     distributor = BundleDistributor(BUNDLES_DIR)
@@ -126,7 +126,7 @@ def main():
 
     if args.subcommand == "list":
         list_bundles()
-        
+
     elif args.subcommand == "install":
         install_bundle(args.source, force=args.force)
 
