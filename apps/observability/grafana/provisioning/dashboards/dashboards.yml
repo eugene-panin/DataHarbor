@@ -7,6 +7,18 @@ providers:
     disableDeletion: false
     editable: true
     allowUiUpdates: true
-    updateIntervalSeconds: 1
+    updateIntervalSeconds: 30
     options:
       path: /etc/grafana/provisioning/dashboards/json
+
+  # Optional per-bundle dashboards: place JSON under bundles/<name>/grafana/*.json
+  # Compose overlays ./bundles onto this path for locally installed private bundles.
+  - name: DataHarbor-Bundle-Dashboards
+    folder: DataHarbor Bundles
+    type: file
+    disableDeletion: false
+    editable: true
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards/bundles

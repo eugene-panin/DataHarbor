@@ -5,9 +5,9 @@ import logging
 import ssl
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import ProxyHandler, Request, build_opener, urlopen
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
 
-from apps.scraper.proxy_manager import proxy_manager
+from apps.scraper.proxy_manager import DEFAULT_PROXY_POOL, proxy_manager
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,17 @@ DEFAULT_HEADERS = {
 }
 
 
+class _RedirectRecorder(HTTPRedirectHandler):
+    def __init__(self, chain: list[str]):
+        super().__init__()
+        self.chain = chain
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        if newurl not in self.chain:
+            self.chain.append(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 class HttpFetcher:
     """HTTP(S) fetcher with optional egress proxy."""
 
@@ -26,16 +37,18 @@ class HttpFetcher:
         proxies: dict[str, str] | None = None,
         session_id: str | None = None,
         use_proxy: bool = True,
+        proxy_pool: str = DEFAULT_PROXY_POOL,
         **_ignored: Any,
     ):
         self.session_id = session_id
         self.use_proxy = use_proxy
+        self.proxy_pool = proxy_pool
         if not use_proxy:
             self.proxies: dict[str, str] = {}
         elif proxies is not None:
             self.proxies = proxies
         else:
-            self.proxies = proxy_manager.get_http_proxies(session_id=session_id) or {}
+            self.proxies = proxy_manager.get_http_proxies(session_id=session_id, pool=proxy_pool) or {}
 
     def fetch(
         self,
@@ -48,6 +61,9 @@ class HttpFetcher:
         if require_proxy and not self.proxies:
             return {
                 "url": url,
+                "requested_url": url,
+                "final_url": url,
+                "redirect_chain": [url],
                 "status": 502,
                 "headers": {},
                 "content": "",
@@ -59,22 +75,30 @@ class HttpFetcher:
             request_headers.update(headers)
 
         logger.info("Fetching URL via HttpFetcher (proxy=%s): %s", bool(self.proxies), url)
+        redirect_chain = [url]
         try:
             req = Request(url, headers=request_headers, method="GET")
+            redirect_recorder = _RedirectRecorder(redirect_chain)
             if self.proxies:
-                opener = build_opener(ProxyHandler(self.proxies))
-                response = opener.open(req, timeout=timeout)
+                opener = build_opener(ProxyHandler(self.proxies), redirect_recorder)
             else:
                 context = ssl.create_default_context()
-                response = urlopen(req, timeout=timeout, context=context)
+                opener = build_opener(HTTPSHandler(context=context), redirect_recorder)
+            response = opener.open(req, timeout=timeout)
 
             with response:
                 raw = response.read()
                 charset = response.headers.get_content_charset() or "utf-8"
                 content = raw.decode(charset, errors="replace")
                 status = getattr(response, "status", None) or response.getcode() or 200
+                final_url = response.geturl() or url
+                if final_url not in redirect_chain:
+                    redirect_chain.append(final_url)
                 return {
                     "url": url,
+                    "requested_url": url,
+                    "final_url": final_url,
+                    "redirect_chain": redirect_chain,
                     "status": int(status),
                     "headers": dict(response.headers.items()),
                     "content": content,
@@ -87,6 +111,9 @@ class HttpFetcher:
                 pass
             return {
                 "url": url,
+                "requested_url": url,
+                "final_url": e.geturl() or url,
+                "redirect_chain": redirect_chain,
                 "status": int(e.code),
                 "headers": dict(e.headers.items()) if e.headers else {},
                 "content": body,
@@ -96,6 +123,9 @@ class HttpFetcher:
             logger.warning("HttpFetcher request failed for %s: %s", url, e)
             return {
                 "url": url,
+                "requested_url": url,
+                "final_url": url,
+                "redirect_chain": redirect_chain,
                 "status": 502,
                 "headers": {},
                 "content": "",
@@ -107,9 +137,10 @@ def scrape_with_http(
     url: str,
     headers: dict[str, str] | None = None,
     session_id: str | None = None,
+    proxy_pool: str = DEFAULT_PROXY_POOL,
 ) -> dict[str, Any]:
     """Helper wrapper for the core HTTP fetcher."""
-    return HttpFetcher(session_id=session_id).fetch(url, headers=headers)
+    return HttpFetcher(session_id=session_id, proxy_pool=proxy_pool).fetch(url, headers=headers)
 
 
 # Back-compat aliases for older imports (neutral behavior only).

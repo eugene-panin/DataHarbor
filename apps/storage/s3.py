@@ -58,6 +58,22 @@ def upload_payload_to_s3(key: str, data: dict[str, Any]) -> str:
         raise
 
 
+def download_payload_from_s3(key: str) -> dict[str, Any]:
+    """Download a JSON payload previously stored by :func:`upload_payload_to_s3`."""
+    bucket_name = os.getenv("S3_BUCKET_NAME", "dataharbor-raw")
+    client = get_s3_client()
+    try:
+        response = client.get_object(Bucket=bucket_name, Key=key)
+        body = response["Body"].read()
+        data = json.loads(body.decode("utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"S3 object s3://{bucket_name}/{key} is not a JSON object")
+        return data
+    except (BotoCoreError, ClientError, ValueError, json.JSONDecodeError) as e:
+        logger.error("Failed to download %s from S3: %s", key, e)
+        raise
+
+
 def download_media_stream_to_s3(
     media_url: str,
     s3_key: str,

@@ -3,16 +3,18 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: dataharbor_postgres
+    env_file:
+      - .env
     environment:
-      - POSTGRES_DB=dataharbor
-      - POSTGRES_USER=dataharbor
-      - POSTGRES_PASSWORD=dataharbor
+      - POSTGRES_DB=${POSTGRES_DB:-dataharbor}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     ports:
       - "54320:5432"  # Host Port 54320 -> Container 5432
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dataharbor -d dataharbor"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -22,7 +24,14 @@ services:
   dagster:
     build: .
     container_name: dataharbor_dagster
-    command: sh -c "mkdir -p /tmp/dagster_home && cp apps/dagster_app/dagster.yaml /tmp/dagster_home/dagster.yaml && python -m apps.dagster_app.run_dev"
+    # Bind-mounting .:/app would hide the image .venv (host macOS venv ≠ Linux).
+    # Keep Linux deps in a named volume; sync crawl extra on start for store_intel/WARC.
+    command: >
+      sh -c "uv sync --frozen --no-dev --extra crawl
+      && mkdir -p /opt/dagster/dagster_home
+      && cp apps/dagster_app/dagster.yaml /opt/dagster/dagster_home/dagster.yaml
+      && cd /opt/dagster
+      && PYTHONPATH=/app python -m apps.dagster_app.run_dev"
     ports:
       - "3000:3000"
     env_file:
@@ -31,22 +40,33 @@ services:
       - S3_ENDPOINT_URL=http://seaweedfs:8333
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
-      - POSTGRES_DB=dataharbor
-      - POSTGRES_USER=dataharbor
-      - POSTGRES_PASSWORD=dataharbor
+      - POSTGRES_DB=${POSTGRES_DB:-dataharbor}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - PROXY_URL=${PROXY_URL}
       - PROXY_LIST=${PROXY_LIST}
-      - DAGSTER_HOME=/tmp/dagster_home
+      - RESIDENTIAL_PROXY_URL=${RESIDENTIAL_PROXY_URL}
+      - RESIDENTIAL_PROXY_LIST=${RESIDENTIAL_PROXY_LIST}
+      - DATACENTER_PROXY_URL=${DATACENTER_PROXY_URL}
+      - DATACENTER_PROXY_LIST=${DATACENTER_PROXY_LIST}
+      - DAGSTER_HOME=/opt/dagster/dagster_home
+      - DAGSTER_WORKSPACE_NAME=${DAGSTER_WORKSPACE_NAME:-all}
       - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       - QDRANT_COLLECTION=${QDRANT_COLLECTION:-dataharbor}
       - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=${CLICKHOUSE_PORT:-8123}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+      - CLICKHOUSE_DB=${CLICKHOUSE_DB:-default}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
       - NOTIFY_WEBHOOK_URL=${NOTIFY_WEBHOOK_URL:-}
       - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-}
       - N8N_ALERT_WEBHOOK_URL=${N8N_ALERT_WEBHOOK_URL:-}
     volumes:
       - .:/app
+      - dagster_venv:/app/.venv
+      - dagster_home:/opt/dagster/dagster_home
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,6 +98,8 @@ services:
     profiles: ["n8n"]
     image: docker.n8n.io/n8nio/n8n:latest
     container_name: dataharbor_n8n
+    env_file:
+      - .env
     ports:
       - "56780:5678"
     environment:
@@ -87,10 +109,10 @@ services:
       - WEBHOOK_URL=http://localhost:56780/
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_INSTANCE_OWNER_MANAGED_BY_ENV=true
-      - N8N_INSTANCE_OWNER_EMAIL=admin@dataharbor.local
-      - N8N_INSTANCE_OWNER_PASSWORD_HASH=$$2a$$10$$xTXrj1FtAz8bpHA8/OSA..91FlQixTy7xZfIm4nx5PLSfFTVKktm6
-      - N8N_INSTANCE_OWNER_FIRST_NAME=Admin
-      - N8N_INSTANCE_OWNER_LAST_NAME=User
+      - N8N_INSTANCE_OWNER_EMAIL=${N8N_ADMIN_EMAIL}
+      - N8N_INSTANCE_OWNER_PASSWORD_HASH=${N8N_INSTANCE_OWNER_PASSWORD_HASH}
+      - N8N_INSTANCE_OWNER_FIRST_NAME=${N8N_INSTANCE_OWNER_FIRST_NAME}
+      - N8N_INSTANCE_OWNER_LAST_NAME=${N8N_INSTANCE_OWNER_LAST_NAME}
       - GENERIC_TIMEZONE=UTC
     volumes:
       - n8n_data:/home/node/.n8n
@@ -100,10 +122,16 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest
     container_name: dataharbor_clickhouse
+    env_file:
+      - .env
     ports:
       - "8123:8123"  # HTTP Interface
       - "9000:9000"  # Native Client Interface
+    environment:
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
     volumes:
+      - ./apps/clickhouse/users.d/dataharbor-admin.xml:/etc/clickhouse-server/users.d/dataharbor-admin.xml:ro
       - clickhouse_data:/var/lib/clickhouse
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
@@ -133,17 +161,20 @@ services:
   grafana:
     image: grafana/grafana-enterprise:latest
     container_name: dataharbor_grafana
+    env_file:
+      - .env
     ports:
-      - "3001:3000"
+      # Grafana is an operator UI; keep it reachable from this host only.
+      - "127.0.0.1:3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_ANONYMOUS_ENABLED=false
       - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
     volumes:
       - ./apps/observability/grafana/provisioning:/etc/grafana/provisioning
+      # Local-only: bundle dashboards from harbor bundle install (not in open-core git).
       - ./bundles:/etc/grafana/provisioning/dashboards/bundles:ro
       - grafana_data:/var/lib/grafana
     depends_on:
@@ -158,3 +189,5 @@ volumes:
   clickhouse_data:
   qdrant_data:
   grafana_data:
+  dagster_venv:
+  dagster_home:
