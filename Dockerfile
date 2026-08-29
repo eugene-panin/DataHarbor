@@ -24,7 +24,8 @@ COPY extractors ./extractors
 # Lockfile is optional on first build; prefer frozen when present
 COPY uv.lock* ./
 
-RUN if [ -f uv.lock ]; then uv sync --frozen --no-dev; else uv sync --no-dev; fi
+# Core + crawl toolkit (CDX/WARC used by store_intel and similar bundles)
+RUN if [ -f uv.lock ]; then uv sync --frozen --no-dev --extra crawl; else uv sync --no-dev --extra crawl; fi
 
 RUN mkdir -p /tmp/dagster_home
 

@@ -33,25 +33,18 @@ ENV/
 dagster_home/
 *.dagster
 apps/dagster_app/workspace.yaml
+apps/dagster_app/workspaces/*.yaml
+!apps/dagster_app/workspaces/.gitkeep
 
-# Custom bundles stay local/private (platform ships only bundle infrastructure)
+# Custom bundles stay local/private (platform runtime lives in apps/bundle/)
 bundles/*
+!bundles/.gitkeep
 !bundles/__init__.py
-!bundles/loader.py
-!bundles/validator.py
-!bundles/distributor.py
-!bundles/scaffold.py
-!bundles/cli.py
-!bundles/doctor.py
-!bundles/plugin_contract.py
 
-# Custom extractors stay local/private (platform ships demo_site + infrastructure)
+# Custom extractors stay local/private (platform runtime lives in apps/extractor/)
 extractors/*
+!extractors/.gitkeep
 !extractors/__init__.py
-!extractors/validator.py
-!extractors/distributor.py
-!extractors/requirements.py
-!extractors/scaffold.py
 !extractors/demo_site/
 **/__pycache__/
 *.pyc
@@ -85,3 +78,4 @@ analysis/
 *.swp
 *.swo
 .DS_Store
+.cache/

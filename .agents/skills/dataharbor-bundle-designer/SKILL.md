@@ -33,11 +33,14 @@ bundles/<bundle_name>/
 | `ml` | Train/RAG from S3; no scrape | manifest, assets, db (run registry) |
 | `etl` | Transform/load only (data already in platform) | manifest, assets, db |
 | `dagster` | Minimal code location (assets only) | manifest, assets |
+| `catalog` | E-commerce catalog ops (DuckDB/Polars/RapidFuzz in bundle) | manifest, assets, db, ingest, transform, match, validate, export, **quarantine**, **dogs/** |
+
+**Dog pack (`dogs/`):** small specialized workers per field (GTIN rules, brand map, color regex, category keywords/ONNX stub, price sanity). Low confidence → `exports/<bundle>_quarantine.csv`.
 
 ```bash
-harbor bundle templates
-harbor bundle new my_leads --template default --extractors demo_site
-harbor bundle new my_ml --template ml
+harbor bundle new my_catalog --template catalog
+uv sync --extra analytics
+export CATALOG_DOG_CONFIDENCE_FLOOR=0.65
 ```
 
 ---

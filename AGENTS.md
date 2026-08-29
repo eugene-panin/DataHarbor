@@ -31,11 +31,14 @@ Modular, self-contained business domains (a task or a pipeline of tasks). Each b
 * **`scraper.py` / `fetch.py` (Optional):** Fetch + orchestration owned by the bundle author. Core provides thin `HttpFetcher` only.
 * **`db.py` (Optional):** PostgreSQL tables/views & ClickHouse `MergeTree` schema initialization.
 * **`exporter.py` (Optional):** Presentation View Layer — interactive HTML/JS domain dossier report generator combining PostgreSQL relational entities, ClickHouse OLAP telemetry, and SeaweedFS media assets (`harbor bundle export <bundle_name>` / `harbor bundle view <bundle_name>`).
+* **`tests/` (Recommended):** Plugin tests co-located with the bundle (`tests/test_*.py`). Created by `harbor bundle new`. Run locally: `PYTHONPATH=. pytest bundles/<name>/tests`. Not committed in open-core (private git repos).
+* **`grafana/` (Optional):** Dashboard JSON exports for Grafana (`grafana/*.json`). Picked up locally via Compose mount into `apps/observability/grafana/.../bundles/`.
 
 ### Extractors Architecture (`extractors/`):
 Separately distributed parse adapters for a single content source. Reused by multiple bundles. Users keep custom extractors in private repos; the platform clones them on demand. Each extractor resides in `extractors/<extractor_id>/` and contains:
 * **`manifest.json` (Required):** Passport with `name`, `version`, `description`, `domains`, `entrypoint` (`extractor:parse`).
 * **`extractor.py` (Required):** `parse(html, source_url) -> list[dict]` and optional `generate_page_urls(base_url, max_pages)`. Extractors MUST NOT perform HTTP, proxy rotation, or browser control — only parse already-fetched content.
+* **`tests/` (Recommended):** Plugin tests co-located with the extractor. Created by `harbor extractor new`. Open-core CI runs only `extractors/demo_site/tests/`; private extractors run `pytest extractors/<id>/tests` in their own repo.
 
 The open-core tree ships **`demo_site`** as a contract example. Domain-specific extractors and business bundles are installed from private/public git remotes.
 
@@ -104,21 +107,18 @@ harbor health
 * `apps/notifications/notifier.py` — Thin Telegram / Slack / webhook fan-out (n8n optional).
 * `apps/scraper/extractor_api.py` — Extractor plugin contract helpers.
 * `apps/scraper/extractors/registry.py` — Dynamic discovery of installed extractors.
-* `apps/dagster_app/workspace_builder.py` — Generate multi code-location `workspace.yaml` (core + one location per bundle).
-* `apps/dagster_app/run_dev.py` — Refresh workspace and start `dagster dev -w …`.
-* `bundles/doctor.py` — `harbor bundle doctor` diagnostics (engines, deps, extractors, defs).
-* `bundles/plugin_contract.py` — Bundle engines/entrypoints contract and Definitions loader.
-* `bundles/loader.py` — Discover + `Definitions.merge` for installed bundles (fail-fast).
-* `bundles/distributor.py` — Bundle installer and packer.
-* `bundles/scaffold.py` — Multi-template bundle generator (`harbor bundle new --template default|ml|etl|dagster`).
-* `bundles/validator.py` — Bundle validator (including required extractors + plugin contract).
-* `extractors/distributor.py` — Extractor installer and packer.
-* `extractors/validator.py` — Extractor validator.
-
+* `apps/dagster_app/workspace_builder.py` — Generate multi code-location `workspace.yaml` (core + one location per bundle). Named profiles: `apps/dagster_app/workspace_profiles.yaml` → `harbor workspace refresh --name store_intel` → `workspaces/<name>.yaml`. Run with `DAGSTER_WORKSPACE_NAME=store_intel` (compose/env) → UI http://localhost:3000.
+* `apps/dagster_app/run_dev.py` — Refresh selected workspace profile and start `dagster dev -w …`.
+* `apps/bundle/` — bundle runtime (install, validate, scaffold, Dagster discovery): `loader.py`, `validator.py`, `distributor.py`, `doctor.py`, `scaffold.py`, `plugin_contract.py`.
+* `bundles/<name>/` — installed business bundles only (local/private by default).
+* `apps/extractor/` — extractor runtime (install, validate, scaffold, bundle resolution): `validator.py`, `distributor.py`, `requirements.py`, `scaffold.py`.
+* `extractors/<id>/` — installed extractor plugins (`demo_site` ships in open-core).
+* `apps/crawl/` — optional Common Crawl toolkit (`uv sync --extra crawl`): CDX HTTPS index, columnar Parquet via HTTPS path-manifest, WARC range fetch. Prefer CDX for URL patterns; Parquet for analytical SQL samples (`COMMONCRAWL_INDEX_MAX_SHARDS`).
 ---
 
 ## ⚖️ 5. Strict Verification & Compliance Protocol for AI Agents
 
 1. **Comprehensive Bundle Verification Rule:** Before answering affirmative compliance questions (e.g. "Does bundle X conform to format Y?"), the AI Agent MUST inspect ALL 4 core bundle files (`manifest.json`, `scraper.py`, `assets.py`, `db.py`) and run `harbor bundle validate`. Never state compliance based on partial file views.
-2. **Automated Cross-Validation Enforcement:** The `harbor bundle validate` CLI tool (`bundles/validator.py`) verifies that every entry in `manifest.json` `requirements.extractors` (local id, git URL, or `{name,source}` object) resolves to an installed valid extractor under `extractors/`. It also fails when `scraper.py` calls `get_extractor("id")` / `require_extractor("id")` for an undeclared id. `harbor bundle install <url>` auto-resolves extractor sources before validation.
+2. **Automated Cross-Validation Enforcement:** The `harbor bundle validate` CLI tool (`apps/bundle/validator.py`) verifies that every entry in `manifest.json` `requirements.extractors` (local id, git URL, or `{name,source}` object) resolves to an installed valid extractor under `extractors/`. It also fails when `scraper.py` calls `get_extractor("id")` / `require_extractor("id")` for an undeclared id. `harbor bundle install <url>` auto-resolves extractor sources before validation.
 3. **Dual Environment Database Verification Rule (Host CLI vs Docker Container DB):** DataHarbor PostgreSQL uses `dbname="postgres"` when executing CLI commands on local host, but uses `dbname="dataharbor"` when executing inside Docker containers (`dataharbor_dagster`). When diagnosing or fixing database errors, schema updates, or Dagster asset failures, the AI Agent MUST run empirical verification tests BOTH on the host CLI AND inside the running Docker container (`docker exec dataharbor_dagster python ...`). Never declare a Dagster or database fix complete without verifying the active container database state.
+4. **Test placement rule:** Platform/runtime tests live in repo-root `tests/` (pytest `testpaths`). Bundle and extractor business tests live in `bundles/<name>/tests/` and `extractors/<id>/tests/` inside each plugin repo — never in open-core `tests/` except scaffolding smoke tests for `apps/bundle` / `apps/extractor`.
