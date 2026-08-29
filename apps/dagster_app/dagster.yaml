@@ -7,3 +7,11 @@ run_monitoring:
 
 telemetry:
   enabled: false
+
+# Any asset that declares a Dagster pool gets one concurrent run by default.
+# The AfterShip bundle uses ``aftership_directory`` so all country partitions
+# share a single slot and cannot make concurrent requests to that source.
+concurrency:
+  pools:
+    default_limit: 1
+    granularity: run

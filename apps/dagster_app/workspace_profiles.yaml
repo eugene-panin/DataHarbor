@@ -1,0 +1,26 @@
+# Named Dagster workspaces — select which bundles load as code locations.
+# Generate: harbor workspace refresh --name <profile>
+# Run:     DAGSTER_WORKSPACE_NAME=store_intel python -m apps.dagster_app.run_dev
+#          → http://localhost:3000
+#
+# bundles: "*" = every installed valid bundle; or an explicit list.
+
+profiles:
+  all:
+    description: All installed bundles (+ core)
+    bundles: "*"
+
+  store_intel:
+    description: Common Crawl store discovery only
+    bundles:
+      - store_intel
+
+  ad_creatives:
+    description: Ad creatives pipeline only
+    bundles:
+      - ad_creatives
+
+  aftership_store_links:
+    description: AfterShip ecommerce directory links only
+    bundles:
+      - aftership_store_links

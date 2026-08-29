@@ -19,6 +19,9 @@ spec:
           image: dataharbor-dagster:latest
           imagePullPolicy: IfNotPresent
           command: ["sh", "-c", "mkdir -p /tmp/dagster_home && cp apps/dagster_app/dagster.yaml /tmp/dagster_home/dagster.yaml && python -m apps.dagster_app.run_dev"]
+          env:
+            - name: DAGSTER_WORKSPACE_NAME
+              value: "all"
           ports:
             - containerPort: 3000
           envFrom:
