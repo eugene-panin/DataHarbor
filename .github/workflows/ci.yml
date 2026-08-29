@@ -44,7 +44,7 @@ jobs:
       - name: Pytest
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: uv run pytest tests/ -q --tb=short
+        run: uv run pytest -q --tb=short
 
       - name: Validate plugins
         env:
