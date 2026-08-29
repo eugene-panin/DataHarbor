@@ -35,6 +35,17 @@ ml = [
     "numpy>=1.24.0",
     "requests>=2.31.0",
 ]
+analytics = [
+    "duckdb>=1.0.0",
+    "polars>=1.0.0",
+    "rapidfuzz>=3.0.0",
+    "python-stdnum>=1.19",
+    "openpyxl>=3.1.0",
+]
+crawl = [
+    "duckdb>=1.0.0",
+    "warcio>=1.7.0",
+]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
@@ -63,3 +74,7 @@ select = ["E4", "E7", "E9", "F", "I", "UP"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["apps", "bundles", "extractors"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "extractors/demo_site/tests"]
+pythonpath = ["."]

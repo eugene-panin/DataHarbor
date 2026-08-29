@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 import typer
+from dotenv import load_dotenv
 
-from apps.cli.commands import (
+# CLI commands should use the same local configuration as Docker Compose.
+# Explicit shell/production environment variables still take precedence.
+load_dotenv(override=False)
+
+from apps.cli.commands import (  # noqa: E402
     agent,
     backup,
     bundle,
+    crawl,
     extractor,
     platform,
     skill,
@@ -39,6 +45,7 @@ app.add_typer(backup.app, name="backup")
 app.add_typer(skill.app, name="skill")
 app.add_typer(agent.app, name="agent-protocol")
 app.add_typer(workspace.app, name="workspace")
+app.add_typer(crawl.app, name="crawl")
 
 
 def main() -> None:
