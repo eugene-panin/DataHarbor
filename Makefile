@@ -33,7 +33,7 @@ validate-bundles:
 
 check:
 	uv run ruff check apps bundles extractors tests
-	PYTHONPATH=. uv run pytest tests/ -q --tb=short
+	PYTHONPATH=. uv run pytest -q --tb=short
 	PYTHONPATH=. uv run harbor bundle validate
 	PYTHONPATH=. uv run harbor extractor validate
 	uv build

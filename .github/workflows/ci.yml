@@ -36,7 +36,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install (frozen lockfile)
-        run: uv sync --frozen --group dev
+        run: uv sync --frozen --group dev --extra crawl
 
       - name: Ruff
         run: uv run ruff check apps bundles extractors tests
