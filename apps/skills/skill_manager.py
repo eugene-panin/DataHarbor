@@ -92,12 +92,20 @@ class SkillManagerEngine:
 > DataHarbor runtime environment automatically detected by `harbor skill install`.
 > **Active Environment:** `{env_info['mode']}` ({env_info['description']})
 
-- **PostgreSQL 16 (OLTP & pgvector):** `{env_info['postgres_host']}`
-- **ClickHouse (OLAP Analytics):** `{env_info['clickhouse_host']}`
-- **SeaweedFS S3 Storage:** `{env_info['s3_url']}`
-- **Qdrant Vector Store:** `{env_info['qdrant_url']}`
-- **Dagster UI Dashboard:** `{env_info['dagster_url']}`
-- **Core Notifier:** Telegram / Slack / `NOTIFY_WEBHOOK_URL` (n8n optional via `--with-n8n`)
+Use `.env` as the host-CLI source of truth (`POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB`).
+Detected bindings this install: postgres `{env_info['postgres_host']}`, ClickHouse `{env_info['clickhouse_host']}`.
+
+| Service | Inside Compose network | Typical host publish |
+|---------|------------------------|----------------------|
+| PostgreSQL 16 + pgvector | `postgres:5432` | `127.0.0.1:54320` |
+| ClickHouse | `clickhouse:8123` | `127.0.0.1:8123` |
+| SeaweedFS S3 | `http://seaweedfs:8333` | `http://localhost:8334` |
+| Qdrant | `http://qdrant:6333` | `http://localhost:6333` |
+| Dagster UI | n/a | `http://localhost:3000` |
+| Grafana | n/a | `http://127.0.0.1:3001` |
+
+- **Core Notifier:** Telegram / Slack / `NOTIFY_WEBHOOK_URL` (n8n optional: `harbor up --with-n8n`)
+- **Dagster DB verification:** when Compose is up, confirm schema/asset fixes with `docker exec dataharbor_dagster python ...` — do not assume the host CLI hits the same DB as the container.
 """
 
     def install_bundled_skills(self) -> dict[str, Any]:

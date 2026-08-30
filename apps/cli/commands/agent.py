@@ -13,20 +13,23 @@ app = typer.Typer(help="Harbor Agent Protocol (HAP v1.0) for external LLM agents
 
 @app.command("status")
 def status() -> None:
-    """Get JSON health status array of all scrapers."""
+    """JSON health array: HEALTHY | DEGRADED | CRITICAL (not ZERO_ROWS)."""
     from apps.observability.health_checker import ScraperHealthChecker
 
     report = ScraperHealthChecker().check_all_scrapers_health()
-    print(json.dumps(report, indent=2))
+    print(json.dumps(report, indent=2, default=str))
 
 
 @app.command("diagnose")
 def diagnose(bundle_name: str = typer.Argument(...)) -> None:
-    """Get compressed JSON diagnostic context (<200 tokens)."""
+    """Compressed JSON from last scraper_execution_logs row + scraper snippet.
+
+    Does not include live HTML or failing CSS selectors.
+    """
     from apps.observability.ai_remediator import AIRemediatorEngine
 
     compressed_json = AIRemediatorEngine().get_compressed_diagnostic_json(bundle_name)
-    print(json.dumps(compressed_json, indent=2))
+    print(json.dumps(compressed_json, indent=2, default=str))
 
 
 @app.command("patch")
@@ -34,8 +37,19 @@ def patch(
     bundle_name: str = typer.Argument(...),
     code_file: str = typer.Option(..., "--code-file", help="Path to replacement Python code"),
 ) -> None:
-    """Apply AST-validated Python patch to scraper.py."""
+    """AST-validate then replace the entire bundles/<name>/scraper.py."""
     from apps.observability.ai_remediator import AIRemediatorEngine
+
+    scraper_path = os.path.join(PROJECT_ROOT, "bundles", bundle_name, "scraper.py")
+    bundle_dir = os.path.dirname(scraper_path)
+    if not os.path.isdir(bundle_dir):
+        print(
+            json.dumps(
+                {"status": "FAILED", "error": f"Bundle '{bundle_name}' not found under bundles/."},
+                indent=2,
+            )
+        )
+        raise typer.Exit(code=1)
 
     with open(code_file, encoding="utf-8") as f:
         patch_code = f.read()
@@ -44,7 +58,6 @@ def patch(
     if not is_valid:
         print(json.dumps({"status": "FAILED", "ast_validation": msg}, indent=2))
         raise typer.Exit(code=1)
-    scraper_path = os.path.join(PROJECT_ROOT, "bundles", bundle_name, "scraper.py")
     with open(scraper_path, "w", encoding="utf-8") as f:
         f.write(patch_code)
     print(
@@ -52,7 +65,11 @@ def patch(
             {
                 "status": "SUCCESS",
                 "ast_validation": "PASSED",
-                "message": f"Applied patch to {scraper_path}",
+                "replaced_file": f"bundles/{bundle_name}/scraper.py",
+                "message": (
+                    f"Replaced {scraper_path}. This is a full-file write, not a surgical diff. "
+                    "Extractor selector drift belongs in extractors/<id>/extractor.py."
+                ),
             },
             indent=2,
         )
@@ -60,14 +77,18 @@ def patch(
 
 
 @app.command("test")
-def test(bundle_name: str = typer.Argument(...)) -> None:
-    """Execute 1-page verification test scrape (stub success)."""
-    print(
-        json.dumps(
-            {
-                "status": "SUCCESS",
-                "message": f"Verification test passed for '{bundle_name}'.",
-            },
-            indent=2,
-        )
-    )
+def test(
+    bundle_name: str = typer.Argument(...),
+    url: str | None = typer.Option(
+        None,
+        "--url",
+        help="Live 1-page scrape URL. Without this, only import is checked.",
+    ),
+) -> None:
+    """Import scraper.py; with --url run one live scrape (SUCCESS | ZERO_ROWS | FAILED)."""
+    from apps.observability.ai_remediator import AIRemediatorEngine
+
+    result = AIRemediatorEngine().run_verification_test(bundle_name, url=url)
+    print(json.dumps(result, indent=2, default=str))
+    if result.get("status") not in {"SUCCESS", "IMPORT_OK"}:
+        raise typer.Exit(code=1)

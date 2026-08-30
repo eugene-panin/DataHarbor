@@ -1,6 +1,12 @@
 import ast
+import importlib
+import inspect
+import json
 import logging
 import os
+import sys
+import traceback
+from datetime import date, datetime
 from typing import Any
 
 import requests
@@ -12,6 +18,20 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BUNDLES_DIR = os.path.join(PROJECT_ROOT, "bundles")
 AGENTS_MD_PATH = os.path.join(PROJECT_ROOT, "AGENTS.md")
+CODE_SNIPPET_CHARS = 600
+
+
+def _jsonable(value: Any) -> Any:
+    """Convert DB/datetime values into JSON-serializable primitives."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    return value
 
 class LLMProviderGateway:
     """Model-Agnostic LLM Provider Gateway supporting Gemini, DeepSeek, OpenAI, Anthropic, and Ollama."""
@@ -185,11 +205,11 @@ class AIRemediatorEngine:
 {product_context[:1200]}... [Truncated for brevity]
 
 ### 🚨 FAILURE DIAGNOSTICS FOR '{bundle_name}':
-- Status: {last_error_log.get('status', 'DEGRADED')}
+- Status: {last_error_log.get('status') or 'UNKNOWN'}
 - Items Scraped: {last_error_log.get('items_scraped', 0)}
 - HTTP 403 (Bans): {last_error_log.get('http_403_count', 0)}
 - HTTP 429 (Limits): {last_error_log.get('http_429_count', 0)}
-- Error Message: {last_error_log.get('error_message', 'Zero rows parsed. Target HTML selector drift detected.')}
+- Error Message: {last_error_log.get('error_message') or 'No failure log in scraper_execution_logs.'}
 
 ### 📄 CURRENT SCRAPER SOURCE CODE (scraper.py):
 ```python
@@ -203,31 +223,218 @@ class AIRemediatorEngine:
 """
         return {
             "bundle_name": bundle_name,
-            "status": last_error_log.get('status', 'DEGRADED'),
-            "error_message": last_error_log.get('error_message', 'Zero-Row Anomaly'),
+            "status": last_error_log.get("status") or "UNKNOWN",
+            "error_message": last_error_log.get("error_message"),
             "ai_prompt": prompt,
             "scraper_path": scraper_path
         }
 
     def get_compressed_diagnostic_json(self, bundle_name: str) -> dict[str, Any]:
-        """Returns compressed, token-optimized JSON diagnostic context for external LLM Agents (HAP v1.0)."""
+        """Compressed HAP diagnostic JSON from last failure log + scraper snippet.
+
+        Does **not** include live HTML or extracted CSS selectors. Agents must
+        read ``scraper.py`` / ``extractors/*/extractor.py`` and fetch a sample
+        page when diagnosing selector drift.
+        """
+        bundle_dir = os.path.join(BUNDLES_DIR, bundle_name)
+        scraper_path = os.path.join(bundle_dir, "scraper.py")
+        extractor_hint = os.path.join(bundle_dir, "manifest.json")
+        declared_extractors: list[str] = []
+        if os.path.isfile(extractor_hint):
+            try:
+                with open(extractor_hint, encoding="utf-8") as f:
+                    manifest = json.load(f)
+                raw = (manifest.get("requirements") or {}).get("extractors") or []
+                for item in raw:
+                    if isinstance(item, str):
+                        declared_extractors.append(item)
+                    elif isinstance(item, dict) and item.get("name"):
+                        declared_extractors.append(str(item["name"]))
+            except Exception:
+                declared_extractors = []
+
         diag = self.diagnose_bundle_failure(bundle_name)
+        scraper_exists = os.path.isfile(scraper_path)
         scraper_code = ""
-        if os.path.exists(diag["scraper_path"]):
-            with open(diag["scraper_path"], encoding="utf-8") as f:
+        if scraper_exists:
+            with open(scraper_path, encoding="utf-8") as f:
                 scraper_code = f.read()
 
-        code_snippet = scraper_code[:600] if scraper_code else ""
+        last_log = {}
+        try:
+            with get_db_cursor(commit=False) as cursor:
+                cursor.execute(
+                    """
+                    SELECT status, items_scraped, http_200_count, http_403_count,
+                           http_429_count, http_500_count, error_message, created_at
+                    FROM scraper_execution_logs
+                    WHERE bundle_name = %s
+                    ORDER BY created_at DESC
+                    LIMIT 1;
+                    """,
+                    (bundle_name,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    last_log = _jsonable(dict(row))
+        except Exception as e:
+            logger.error("Error fetching last execution log for '%s': %s", bundle_name, e)
+            last_log = {"error": str(e)}
 
         return {
             "protocol": "HAP/1.0",
             "bundle_name": bundle_name,
-            "status": diag.get("status", "DEGRADED"),
-            "error_message": diag.get("error_message", "Zero-Row Anomaly"),
+            "bundle_exists": os.path.isdir(bundle_dir),
+            "scraper_exists": scraper_exists,
+            "declared_extractors": declared_extractors,
+            "status": last_log.get("status") or diag.get("status") or "UNKNOWN",
+            "error_message": diag.get("error_message") or last_log.get("error_message"),
+            "last_log": last_log,
             "target_file": f"bundles/{bundle_name}/scraper.py",
-            "code_snippet": code_snippet,
-            "instruction": "Fix CSS selectors or handling logic. Return valid Python code block."
+            "code_snippet": scraper_code[:CODE_SNIPPET_CHARS] if scraper_code else "",
+            "missing_fields": [
+                "failing_selectors",
+                "html_sample",
+            ],
+            "instruction": (
+                "HAP does not capture HTML or CSS selectors. Classify Mode A "
+                "(ZERO_ROWS / selector drift in extractor.py), Mode B "
+                "(HTTP 403/429 — fetch/proxy), or Mode C (Python exception). "
+                "Apply a surgical edit; do not rewrite the bundle. "
+                "Verify with `harbor agent-protocol test <bundle> --url <url>`, "
+                "`harbor bundle validate`, and `harbor health`. "
+                "`harbor agent-protocol patch` replaces the entire scraper.py."
+            ),
         }
+
+    def run_verification_test(
+        self,
+        bundle_name: str,
+        *,
+        url: str | None = None,
+    ) -> dict[str, Any]:
+        """Import the bundle scraper; optionally run one live scrape.
+
+        Without ``url`` this only proves the module imports. That is not a
+        scrape success. Live verification requires ``url``.
+        """
+        bundle_dir = os.path.join(BUNDLES_DIR, bundle_name)
+        scraper_path = os.path.join(bundle_dir, "scraper.py")
+        if not os.path.isdir(bundle_dir):
+            return {
+                "status": "FAILED",
+                "phase": "lookup",
+                "bundle_name": bundle_name,
+                "error": f"Bundle '{bundle_name}' not found under bundles/.",
+            }
+        if not os.path.isfile(scraper_path):
+            return {
+                "status": "FAILED",
+                "phase": "lookup",
+                "bundle_name": bundle_name,
+                "error": (
+                    f"bundles/{bundle_name}/scraper.py is missing. "
+                    "ETL/ML/catalog bundles have no scrape step — skip HAP test."
+                ),
+            }
+
+        module_name = f"bundles.{bundle_name}.scraper"
+        try:
+            if module_name in sys.modules:
+                mod = importlib.reload(sys.modules[module_name])
+            else:
+                mod = importlib.import_module(module_name)
+        except Exception as e:
+            return {
+                "status": "FAILED",
+                "phase": "import",
+                "bundle_name": bundle_name,
+                "error": f"{type(e).__name__}: {e}",
+                "traceback": traceback.format_exc(limit=8),
+            }
+
+        scrape_fn = self._resolve_scrape_callable(mod)
+        if scrape_fn is None:
+            return {
+                "status": "FAILED",
+                "phase": "import",
+                "bundle_name": bundle_name,
+                "error": f"{module_name} has no scrape() function or class method.",
+            }
+
+        if not url:
+            return {
+                "status": "IMPORT_OK",
+                "phase": "import",
+                "bundle_name": bundle_name,
+                "live_scrape": False,
+                "message": (
+                    "scraper.py imported. This is not a scrape proof. "
+                    "Re-run with --url for a live 1-page verification."
+                ),
+            }
+
+        try:
+            items = self._invoke_scrape(scrape_fn, url)
+        except Exception as e:
+            return {
+                "status": "FAILED",
+                "phase": "scrape",
+                "bundle_name": bundle_name,
+                "live_scrape": True,
+                "url": url,
+                "error": f"{type(e).__name__}: {e}",
+                "traceback": traceback.format_exc(limit=8),
+            }
+
+        count = len(items) if isinstance(items, list) else 0
+        status = "SUCCESS" if count else "ZERO_ROWS"
+        return {
+            "status": status,
+            "phase": "scrape",
+            "bundle_name": bundle_name,
+            "live_scrape": True,
+            "url": url,
+            "items_scraped": count,
+        }
+
+    @staticmethod
+    def _resolve_scrape_callable(mod: Any) -> Any | None:
+        scrape = getattr(mod, "scrape", None)
+        if callable(scrape) and not inspect.isclass(scrape):
+            return scrape
+        for obj in vars(mod).values():
+            if (
+                inspect.isclass(obj)
+                and obj.__module__ == mod.__name__
+                and callable(getattr(obj, "scrape", None))
+            ):
+                try:
+                    return obj().scrape
+                except TypeError:
+                    continue
+        return None
+
+    @staticmethod
+    def _invoke_scrape(scrape_fn: Any, url: str) -> Any:
+        sig = inspect.signature(scrape_fn)
+        params = [
+            p
+            for p in sig.parameters.values()
+            if p.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+        ]
+        if not params:
+            return scrape_fn()
+        first = params[0].name
+        try:
+            return scrape_fn(**{first: url})
+        except TypeError:
+            return scrape_fn(url)
 
     def autofix_bundle_scraper(self, bundle_name: str) -> dict[str, Any]:
         """Queries LLM provider, validates AST, and applies patch autonomously."""

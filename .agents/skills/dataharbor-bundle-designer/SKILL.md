@@ -1,235 +1,300 @@
 ---
 name: dataharbor-bundle-designer
-description: Authoritative architecture, schema, and implementation guide for designing and building DataHarbor modular domain bundles. Trigger whenever asked to create a new bundle, design a bundle schema, or modify an existing DataHarbor bundle.
+description: Authoritative runbook for designing and building DataHarbor domain bundles against the live plugin contract. Trigger whenever asked to create a new bundle, design a bundle schema, or change an existing DataHarbor bundle.
 ---
 
-# 📦 DataHarbor Bundle Designer Skill
+# DataHarbor Bundle Designer
 
-This skill provides comprehensive architectural guidelines, file structures, and code standards for designing and implementing high-quality, modular business domain bundles in DataHarbor.
+Working tool, not a wish-list. If this skill and the code disagree, trust the code:
+
+- `AGENTS.md`
+- `apps/bundle/scaffold.py` — what `harbor bundle new` actually writes
+- `apps/bundle/plugin_contract.py` — engines / entrypoints / Celery ban
+- `apps/bundle/validator.py` — what `harbor bundle validate` fails on
+- `apps/dagster_app/workspace_builder.py` — one Dagster code location per bundle
+
+Do not invent Celery workers, Core Playwright, `CurlScraper` impersonation, or Core merging all `assets.py` into one location.
 
 ---
 
-## 🏛️ 1. Bundle Directory Structure
+## 0. Mandatory interactive discovery (hard gate)
 
-Every bundle resides in `bundles/<bundle_name>/`. All entrypoints are auto-discovered by DataHarbor Core:
+Do not scaffold, edit `manifest.json`, write schemas/scrapers/assets, or run mutating Harbor commands until discovery is completed and the user explicitly approves the record. Read-only inspection of an existing bundle is allowed only to frame questions.
 
-```text
-bundles/<bundle_name>/
-├── manifest.json       # [REQUIRED] Passport: engines, requirements, entrypoints, observability
-├── assets.py           # [RECOMMENDED] Export `defs = Definitions(...)` (merged by Core)
-├── fetch.py            # [OPTIONAL] Bundle-owned fetch helpers
-├── scraper.py          # [OPTIONAL] Fetch + orchestration
-├── db.py               # [OPTIONAL] PostgreSQL (pgvector) & ClickHouse OLAP schema init
-└── exporter.py         # [OPTIONAL] HTML/CSV dataset report generator
+### Protocol
+
+1. State that the bundle is in `DISCOVERY` and implementation is gated.
+2. Ask **exactly one** single-focus question at a time, in the user's language. Do not show this question map, rounds, or a numbered form.
+3. Wait. Acknowledge the answer in one sentence (record the fact, or mark `UNKNOWN` / `REVIEW_REQUIRED`).
+4. If the answer is still ambiguous, ask one follow-up. Otherwise ask the next unanswered item.
+5. Skip genuinely inapplicable prompts and record why. Bring source authorization, personal data, and external-action questions forward as soon as they matter.
+6. After all applicable questions, return a **Bundle Discovery Record** and list blockers / assumptions.
+7. Ask for explicit approval. Only unambiguous approval → `DISCOVERY_APPROVED`. Unresolved rights, personal-data handling, or untestable acceptance → stay `DISCOVERY_BLOCKED`.
+
+### Question map (agent-only)
+
+**Entry.** “What do you want to do with a DataHarbor bundle: create a new bundle, design its schema, or change an existing bundle?”
+
+- New / schema: next ask for a short snake_case working name and domain description.
+- Existing: next ask for name or path and the requested change; then read-only inspect.
+
+**Round 1 — outcome**
+
+1. What decision or workflow does this change, and who consumes the output?
+2. Smallest useful first release: primary entity, grain (one row per what?), required fields.
+3. Explicitly out of scope.
+4. Geography, languages, historical period, refresh cadence, expected volume.
+
+**Round 2 — sources and safety**
+
+5. Each source: canonical URL/API, access method, owner, credentials / payment / proxy.
+6. What permits collection and use (API terms, licence, contract, written authorization)? Intended use and redistribution.
+7. Personal data, credentials, regulated data, copyrighted content, rate limits? Minimization, retention, access, deletion.
+8. External actions? Default is read-only collection. Contact, CRM writes, purchasing, publishing need separate authorization.
+
+**Round 3 — pipeline**
+
+9. Path raw → normalized → derived → output. Which fields need evidence URL, timestamp, or raw snapshot?
+10. Components needed **now** from this set only: PostgreSQL, ClickHouse, SeaweedFS, Qdrant, Dagster, HttpFetcher/scraper, extractor plugin, exporter, Grafana. Mark the rest `NOT_NEEDED`. **Celery is not Core** (`entrypoints.celery` must be `null`). n8n is optional compose profile, not a bundle runtime.
+11. Trigger (manual / schedule / event), concurrency, retry, idempotency, checkpoints, terminal states.
+12. Which failures stop the run vs `ZERO_ROWS` / `FAILED` / `ENV_ERROR` / `REVIEW_REQUIRED`, and who reviews?
+
+**Round 4 — quality**
+
+13. Coverage, freshness, completeness, uniqueness, anomaly thresholds; what to report when missed.
+14. How consumers get the result (tables, CSV/HTML export, Dagster UI, Grafana, alert) and who may access it.
+15. Observability: `record_scraper_execution`, asset checks, alerts, log retention.
+16. Acceptance scenarios: one successful run, one empty/partial, one recoverable failure.
+17. Owner after release, SLA, deadline, budget, deploy environment (Compose vs host CLI).
+
+### Bundle Discovery Record
+
+```yaml
+bundle_discovery:
+  status: DISCOVERY | DISCOVERY_BLOCKED | DISCOVERY_APPROVED
+  request:
+    operation: CREATE | DESIGN_SCHEMA | MODIFY
+    existing_bundle_path: <path_or_NOT_APPLICABLE>
+    requested_change: <answer_or_NOT_APPLICABLE>
+  bundle_name: <snake_case>
+  outcome_and_consumer: <answer>
+  first_release:
+    entity_and_grain: <answer>
+    required_fields: []
+    out_of_scope: []
+  scope:
+    geography: <answer>
+    languages: []
+    historical_period: <answer>
+    refresh_cadence: <answer>
+    expected_volume: <answer>
+  sources:
+    - canonical_url_or_api: <answer>
+      access_method: <answer>
+      credentials_or_cost: <answer>
+      permission_and_terms: <answer>
+      intended_use_and_redistribution_rights: <answer>
+  data_handling:
+    sensitive_or_personal_data: <answer>
+    minimization_and_retention: <answer>
+    access_and_deletion: <answer>
+  authorized_external_actions: <read_only_or_explicitly_authorized>
+  pipeline:
+    raw_normalized_derived_output: <answer>
+    evidence_and_provenance: <answer>
+    required_components: []
+    trigger_and_execution_controls: <answer>
+    failure_states_and_review_owner: <answer>
+  delivery_and_access: <answer>
+  quality_and_observability:
+    acceptance_thresholds: <answer>
+    metrics_alerts_and_retention: <answer>
+  acceptance_scenarios: []
+  ownership_and_constraints: <answer>
+  assumptions: []
+  blockers: []
+  user_approval: <pending_or_approved>
 ```
 
 ---
 
-## 🧱 1b. Scaffold templates (`harbor bundle new --template`)
+## 1. How Core actually loads a bundle
 
-| Template | Use case | Files |
-|----------|----------|-------|
-| `default` | Ingest: fetch → scrape → store → Dagster | manifest, assets, fetch, scraper, db |
-| `ml` | Train/RAG from S3; no scrape | manifest, assets, db (run registry) |
-| `etl` | Transform/load only (data already in platform) | manifest, assets, db |
-| `dagster` | Minimal code location (assets only) | manifest, assets |
-| `catalog` | E-commerce catalog ops (DuckDB/Polars/RapidFuzz in bundle) | manifest, assets, db, ingest, transform, match, validate, export, **quarantine**, **dogs/** |
+- Bundles live in `bundles/<name>/` (Python identifier). Open-core ships **none**; install or scaffold them.
+- `harbor workspace refresh` writes `apps/dagster_app/workspace.yaml`: location `core` plus `bundle_<name>` per valid bundle. Named profiles: `harbor workspace refresh --name <profile>` → `apps/dagster_app/workspaces/<name>.yaml`.
+- Each bundle exports `defs = Definitions(...)` from the module in `entrypoints.dagster` (default `assets:defs`). Core does **not** merge all bundle assets into one location. An invalid bundle is skipped (unless `--strict`); it does not take down others.
+- Fetch is bundle-owned. Core ships thin `HttpFetcher` (`apps.scraper.http_fetcher`). `CurlScraper` is a **compat alias** of `HttpFetcher` — no Chrome impersonation.
+- Parse adapters are **extractors** under `extractors/<id>/`, not inlined as Core scrapers. Extractors must not perform HTTP.
 
-**Dog pack (`dogs/`):** small specialized workers per field (GTIN rules, brand map, color regex, category keywords/ONNX stub, price sanity). Low confidence → `exports/<bundle>_quarantine.csv`.
+---
+
+## 2. Scaffold first — do not hand-roll the skeleton
 
 ```bash
-harbor bundle new my_catalog --template catalog
-uv sync --extra analytics
-export CATALOG_DOG_CONFIDENCE_FLOOR=0.65
+harbor bundle templates
+harbor bundle new <name> --template default|ml|etl|dagster|catalog [--extractors demo_site,other_id]
+harbor extractor resolve <name>   # clone declared extractor sources
+harbor bundle validate
+harbor bundle doctor <name>
+harbor workspace refresh
 ```
+
+| Template | Use | Files Core actually writes |
+|----------|-----|----------------------------|
+| `default` | ingest: fetch → scrape → store | `manifest.json`, `__init__.py`, `assets.py`, `fetch.py`, `scraper.py`, `db.py`, `tests/` |
+| `ml` | train/RAG from S3; no scrape | manifest, `__init__.py`, `assets.py`, `db.py`, `tests/` |
+| `etl` | transform/load only | same as ml-style (no fetch/scraper) |
+| `dagster` | empty code location | manifest, `__init__.py`, `assets.py`, `tests/` |
+| `catalog` | feed ops (DuckDB/Polars/RapidFuzz) | + `ingest.py`, `transform.py`, `match.py`, `validate.py`, `export.py`, `quarantine.py`, `dogs/` |
+
+Catalog extras: `uv sync --extra analytics`, `CATALOG_DOG_CONFIDENCE_FLOOR` (default 0.65). Low-confidence rows → `exports/<bundle>_quarantine.csv`.
+
+Optional later: `exporter.py` (`harbor bundle export` / `view`), `grafana/*.json` (Compose mounts `bundles/` into Grafana).
+
+`default` `assets.py` is an **empty** `Definitions(assets=[])`. Partitions and `@asset_check` are **recommended** for ingest pipelines, not enforced by the validator.
 
 ---
 
-## 📋 2. Mandatory File Specs & Code Templates
+## 3. `manifest.json` — passport the validator actually reads
 
-### A. Manifest File (`manifest.json`)
-The `manifest.json` file is the bundle passport. It defines observability thresholds used by the health checker:
+Required keys: `name`, `version`, `description`.
+
+Scaffold defaults (follow these unless discovery says otherwise):
 
 ```json
 {
   "name": "my_domain_bundle",
-  "version": "1.0.0",
-  "description": "High-throughput scraper and analytical pipeline for target domain data",
-  "category": "Market Intelligence",
-  "author": "DataHarbor Team",
+  "version": "0.1.0",
+  "description": "...",
+  "category": "custom",
+  "author": "DataHarbor",
   "engines": { "dataharbor": ">=1.0.0,<2.0.0" },
   "requirements": {
     "extractors": [],
-    "python": []
+    "python": [],
+    "min_python_version": "3.10"
   },
   "entrypoints": {
     "dagster": "assets:defs",
     "celery": null
   },
   "observability": {
-    "staleness_sla_hours": 12,
-    "anomaly_threshold_ratio": 0.3
+    "staleness_sla_hours": 24,
+    "anomaly_threshold_ratio": 0.2
   }
 }
 ```
 
+- `engines.dataharbor`: PEP 440 specifier; optional, but if present must match installed `dataharbor`.
+- `entrypoints.celery` must be **null**. Non-null fails `validate_manifest_contract`.
+- `entrypoints.dagster: null` means no Dagster defs (workspace skips the location).
+- `requirements.extractors`: local id (`"demo_site"`), git URL, or `{"name": "...", "source": "https://..."}`.
+- `requirements.python`: extra pip specs for **this bundle** (e.g. `"playwright>=1.41"`). Core does not ship Playwright.
+- Observability thresholds are read by `ScraperHealthChecker`. Env fallbacks: `OBSERVABILITY_STALENESS_SLA_HOURS=12`, `OBSERVABILITY_ANOMALY_THRESHOLD_RATIO=0.3`.
+
+Validator also fails if `scraper.py` calls `get_extractor("id")` / `require_extractor("id")` for an undeclared id, or if a declared extractor is missing/invalid under `extractors/`.
+
 ---
 
-### B. Database Schema (`db.py`)
-Must initialize PostgreSQL tables (with `pgvector` 512D embeddings if applicable) and ClickHouse `MergeTree` OLAP tables for high-speed analytics:
+## 4. Extractors (parse-only plugins)
 
-```python
-import logging
-from apps.db.connection import get_db_cursor
-from apps.db.clickhouse_client import get_clickhouse_client
-
-logger = logging.getLogger(__name__)
-
-def init_bundle_tables():
-    """Initializes PostgreSQL OLTP and ClickHouse OLAP tables for the bundle."""
-    # 1. PostgreSQL Schema
-    with get_db_cursor(commit=True) as cursor:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS my_domain_items (
-                id SERIAL PRIMARY KEY,
-                item_title VARCHAR(255) NOT NULL,
-                url TEXT UNIQUE NOT NULL,
-                vector_embedding vector(512),
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-
-    # 2. ClickHouse OLAP Schema
-    ch_client = get_clickhouse_client()
-    if ch_client:
-        ch_client.command("""
-            CREATE TABLE IF NOT EXISTS clickhouse_my_domain_analytics (
-                item_id UInt64,
-                title String,
-                created_at DateTime DEFAULT now()
-            ) ENGINE = MergeTree()
-            ORDER BY (created_at, item_id);
-        """)
+```text
+extractors/<id>/
+├── manifest.json    # name, version, description, domains, entrypoint (extractor:parse)
+├── extractor.py     # parse(html, source_url) -> list[dict]; optional generate_page_urls
+└── tests/
 ```
 
----
+- Each record should include `source_url`.
+- Scaffold: `harbor extractor new <id> --domains example.com`
+- Resolve from a bundle: `harbor extractor resolve <bundle>` / `harbor bundle resolve <bundle>`
+- Open-core ships `demo_site` as the contract example.
 
-### C. Scraper (`scraper.py`)
-Scrapers SHOULD:
-1. Fetch content (Core `HttpFetcher` for simple HTTP; JS/browser fetch is bundle-owned — declare Playwright etc. in `requirements.python`).
-2. Parse via installed extractors when applicable.
-3. Optionally use egress via `.env` (`PROXY_URL` / `PROXY_LIST`).
-4. Log metrics via `apps.observability.metrics.record_scraper_execution()`.
-
-How a bundle fetches is up to its author; Core does not prescribe or restrict fetch technique.
-
-```python
-import logging
-from typing import List, Dict, Any
-from apps.scraper.http_fetcher import HttpFetcher
-from apps.observability.metrics import record_scraper_execution
-
-logger = logging.getLogger(__name__)
-
-class MyDomainScraper:
-    def __init__(self):
-        self.fetcher = HttpFetcher()
-
-    def scrape(self) -> List[Dict[str, Any]]:
-        target_url = "https://example.com/data"
-        res = self.fetcher.fetch(target_url)
-        items = []
-
-        if res.get("status") == 200:
-            # Parse HTML / JSON items here
-            items = [{"title": "Sample Item"}]
-
-        status = "SUCCESS" if items else "ZERO_ROWS"
-        record_scraper_execution(
-            bundle_name="my_domain_bundle",
-            status=status,
-            items_scraped=len(items),
-            http_200_count=1 if res.get("status") == 200 else 0,
-            http_403_count=1 if res.get("status") == 403 else 0
-        )
-        return items
-```
+Ingest scraper pattern (what `default` scaffold generates): fetch with `fetch.py` → `get_extractor(url)` → `record_scraper_execution`. Selector drift is usually **extractor** code, not Core.
 
 ---
 
-### D. Dagster Assets, Partitions & Data Quality Checks (`assets.py`)
-All bundle asset declarations MUST:
-1. Use a **human-readable group name** (e.g. `group_name="my_pipeline"`).
-2. Include stage tags and markdown descriptions (`description="[1/3] 🚢 Scrape -> S3"`).
-3. **MANDATORY PARTITIONING:** Define `partitions_def` using `StaticPartitionsDefinition` (by category/domain subtype) or `DailyPartitionsDefinition` (by date), allowing single-partition re-runs in Dagster UI.
-4. **MANDATORY REAL-TIME LOGGING & LIVE UI OBSERVATIONS:** Emit `context.log.info()` per page/batch iteration and yield `AssetObservation` metadata events so Dagster UI streams real-time progress and live item counts without black-box delays.
-5. **MANDATORY ASSET CHECKS:** Include `@asset_check` Data Quality assertions for payload non-emptiness, PostgreSQL key uniqueness, and schema value range sanity:
+## 5. Fetch and scrape
+
+Prefer `apps.scraper.http_fetcher.HttpFetcher` / bundle `fetch.py`. JS/browser fetch stays in the bundle; declare deps in `requirements.python`.
+
+Optional egress: `PROXY_URL` / `PROXY_LIST`, or `proxy_manager.get_http_proxies()` / `get_browser_proxy()`.
+
+Always log:
 
 ```python
-from dagster import asset, asset_check, AssetCheckResult, AssetCheckSeverity, Config, Output, MetadataValue, StaticPartitionsDefinition, AssetExecutionContext, AssetObservation
-from apps.db.connection import get_db_cursor
-
-# 1. Define Static or Daily Partitions
-my_category_partitions = StaticPartitionsDefinition(["category_a", "category_b", "category_c"])
-
-@asset(
-    group_name="my_domain_b2b",
-    partitions_def=my_category_partitions,
-    description="[1/2] 🚢 Scrape domain directory by category partition into raw S3 JSON"
+record_scraper_execution(
+    bundle_name="<name>",
+    status="SUCCESS" if items else "ZERO_ROWS",  # or FAILED
+    items_scraped=len(items),
+    http_200_count=...,
+    http_403_count=...,
+    http_429_count=...,
 )
-def raw_my_domain_s3(context: AssetExecutionContext):
-    target_category = context.partition_key if context.has_partition_key else None
-    ...
-
-@asset(
-    group_name="my_domain_b2b",
-    partitions_def=my_category_partitions,
-    deps=[raw_my_domain_s3],
-    description="[2/2] 💾 Ingest category partition S3 payload into PostgreSQL database"
-)
-def postgres_my_domain(context: AssetExecutionContext):
-    target_category = context.partition_key if context.has_partition_key else None
-    ...
-
-# --- MANDATORY ASSET CHECKS (DATA QUALITY ASSERTIONS) ---
-
-@asset_check(asset=raw_my_domain_s3, description="Verifies S3 payload is not empty")
-def check_raw_my_domain_non_empty():
-    # Verify count > 0 in S3
-    ...
-    return AssetCheckResult(passed=True, metadata={"items_count": 100})
-
-@asset_check(asset=postgres_my_domain, description="Verifies PostgreSQL domain uniqueness")
-def check_postgres_my_domain_uniqueness():
-    # Check no duplicate URLs in Postgres
-    ...
-    return AssetCheckResult(passed=True, metadata={"duplicate_count": 0})
 ```
+
+Statuses used in `scraper_execution_logs`: `SUCCESS`, `DEGRADED`, `FAILED`, `ZERO_ROWS`. Health roll-up statuses are `HEALTHY` | `DEGRADED` | `CRITICAL` — not `ZERO_ROWS`.
 
 ---
 
-## 🛠️ 3. Bundle Validation & Packaging Guidelines
+## 6. `db.py` and dual-environment Postgres
 
-After creating or editing a bundle, ALWAYS run:
+`init_bundle_tables()` should be idempotent (`CREATE TABLE IF NOT EXISTS`). PostgreSQL is the OLTP sink; ClickHouse `MergeTree` is optional OLAP.
+
+When Compose is the runtime:
+
+| | Host CLI | `dataharbor_dagster` |
+|--|----------|----------------------|
+| Host | `.env` `POSTGRES_HOST` / `POSTGRES_PORT` (example: `127.0.0.1:54320`) | `postgres:5432` |
+| DB name | `.env` `POSTGRES_DB` | compose env (example: `dataharbor`) |
+
+Never mark a schema or Dagster asset fix done until it is verified in the **container that runs the asset** (`docker exec dataharbor_dagster python ...`) as well as, if relevant, the host CLI.
+
+---
+
+## 7. `assets.py` — recommended quality (not validator law)
+
+Must: `defs = Definitions(...)` matching `entrypoints.dagster`.
+
+Should (ingest pipelines):
+
+1. `group_name` matching the bundle.
+2. Stage descriptions (`[1/n] ...`).
+3. `partitions_def` (`StaticPartitionsDefinition` or `DailyPartitionsDefinition`) when re-running a slice in the UI matters.
+4. `context.log.info` per batch; `AssetObservation` when live counts help.
+5. `@asset_check` for non-empty payload, uniqueness, range sanity.
+
+Register checks on `Definitions(..., asset_checks=[...])`. Catalog template already includes a QA gate check.
+
+After edits: `harbor workspace refresh` (or restart `harbor` / compose Dagster so locations reload).
+
+---
+
+## 8. Publish and pack
+
 ```bash
-# 1. Validate bundle manifest and schema integrity
-harbor bundle validate
-
-# 2. Audit scraper health status
-harbor health
-
-# 3. Pack bundle for distribution
-harbor bundle pack <bundle_name>
+harbor bundle pack <name>
+harbor bundle publish <name> [--remote <url>] [--dry-run] [--allow-local-extractors]
 ```
 
+- Validates, copies a **temporary** snapshot (or `--workdir`). Does **not** create nested `.git` in the monorepo.
+- Needs git `user.name` / `user.email`. `gh` optional (private repo by default).
+- Bundle publish **never** auto-publishes extractors. Local extractor ids (except shipped `demo_site`) block real publish unless `--allow-local-extractors`.
 
 ---
 
----
+## 9. Definition of done
 
----
+Before claiming the bundle is valid or “conforms”:
 
----
+1. Read `manifest.json`, `assets.py`, and any present `scraper.py` / `db.py` / extractor files — not a partial view.
+2. `harbor bundle validate` and `harbor bundle doctor <name>`.
+3. `PYTHONPATH=. pytest bundles/<name>/tests`.
+4. If scraping: one live run (`PYTHONPATH=. .venv/bin/python bundles/<name>/scraper.py` or `harbor agent-protocol test <name> --url ...`) plus `harbor health`.
+5. If Dagster/DB: verify inside `dataharbor_dagster` when Compose is up.
+
+Do not commit unless the user asked. Do not pack/publish unless they asked.
+
 
 ---
 
@@ -238,10 +303,19 @@ harbor bundle pack <bundle_name>
 ## 🌐 Active Target Runtime Environment Context
 > [!NOTE]
 > DataHarbor runtime environment automatically detected by `harbor skill install`.
-> **Active Environment:** `DOCKER_COMPOSE` (Docker Compose Microservices Stack)
+> **Active Environment:** `LOCAL_HOST` (Local Machine Host (Dev Execution))
 
-- **PostgreSQL 16 (OLTP & pgvector):** `postgres (Port 5432)`
-- **ClickHouse (OLAP Analytics):** `clickhouse (Port 8123)`
-- **SeaweedFS S3 Storage:** `http://seaweedfs:8333`
-- **Dagster UI Dashboard:** `http://localhost:3000`
+Use `.env` as the host-CLI source of truth (`POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB`).
+Detected bindings this install: postgres `127.0.0.1:5432`, ClickHouse `127.0.0.1:8123`.
+
+| Service | Inside Compose network | Typical host publish |
+|---------|------------------------|----------------------|
+| PostgreSQL 16 + pgvector | `postgres:5432` | `127.0.0.1:54320` |
+| ClickHouse | `clickhouse:8123` | `127.0.0.1:8123` |
+| SeaweedFS S3 | `http://seaweedfs:8333` | `http://localhost:8334` |
+| Qdrant | `http://qdrant:6333` | `http://localhost:6333` |
+| Dagster UI | n/a | `http://localhost:3000` |
+| Grafana | n/a | `http://127.0.0.1:3001` |
+
 - **Core Notifier:** Telegram / Slack / `NOTIFY_WEBHOOK_URL` (n8n optional: `harbor up --with-n8n`)
+- **Dagster DB verification:** when Compose is up, confirm schema/asset fixes with `docker exec dataharbor_dagster python ...` — do not assume the host CLI hits the same DB as the container.
