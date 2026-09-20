@@ -181,6 +181,16 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # 8. Demo site (static HTML fixture scraped by the bundled `demo` bundle)
+  demo_site:
+    image: nginx:alpine
+    container_name: dataharbor_demo_site
+    ports:
+      - "8098:80"  # browse the fixture at http://localhost:8098
+    volumes:
+      - ./deploy/demo_site:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
 volumes:
   seaweed_data:
   postgres_data:

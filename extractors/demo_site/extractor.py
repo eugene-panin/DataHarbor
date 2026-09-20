@@ -20,11 +20,13 @@ def parse(html: str, source_url: str) -> list[dict[str, Any]]:
         title = node.get_text(" ", strip=True)
         if not title or len(title) < 2:
             continue
+        summary_node = node.find_next_sibling("p")
+        summary = summary_node.get_text(" ", strip=True) if summary_node else title
         results.append(
             {
                 "company_name": title,
                 "website": None,
-                "summary": title,
+                "summary": summary,
                 "source_directory": "demo_site",
                 "source_url": source_url,
             }

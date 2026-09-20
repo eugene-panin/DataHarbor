@@ -11,6 +11,19 @@ from apps.cli.env_files import ensure_compose_profile_env
 from apps.cli.paths import PROJECT_ROOT
 
 
+def _refresh_dagster_workspace() -> None:
+    """Best-effort regenerate Dagster multi-location workspace.yaml so bundles already
+    on disk (e.g. the shipped `demo` bundle) are picked up without a manual refresh."""
+    try:
+        from apps.dagster_app.workspace_builder import location_names, write_workspace_yaml
+
+        path, doc, warnings = write_workspace_yaml(project_root=PROJECT_ROOT)
+        names = location_names(doc)
+        print(f"🗂️  Dagster workspace refreshed ({len(names)} locations): {path}")
+    except Exception as e:
+        print(f"⚠️  Dagster workspace refresh skipped: {e}")
+
+
 def check_active_runtime() -> str:
     """Return 'KUBERNETES', 'DOCKER_COMPOSE', or 'NONE'."""
     if shutil.which("kubectl"):
@@ -137,6 +150,8 @@ def up(
         print("💡 You cannot deploy in Kubernetes while Docker Compose is active.")
         print("👉 Please run 'harbor down' first to safely stop Docker Compose services.\n")
         raise typer.Exit(code=1)
+
+    _refresh_dagster_workspace()
 
     print(f"\n🚀 Starting DataHarbor Platform Services (Environment: {env.upper()})...")
     print("=" * 60)

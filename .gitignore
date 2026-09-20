@@ -40,6 +40,7 @@ apps/dagster_app/workspaces/*.yaml
 bundles/*
 !bundles/.gitkeep
 !bundles/__init__.py
+!bundles/demo/
 
 # Custom extractors stay local/private (platform runtime lives in apps/extractor/)
 extractors/*
@@ -68,6 +69,8 @@ analysis/
 !README.tr.md
 !AGENTS.md
 !.agents/**/*.md
+!extractors/demo_site/AGENT.md
+!bundles/demo/AGENT.md
 
 # IDE / OS / local tooling
 .idea/

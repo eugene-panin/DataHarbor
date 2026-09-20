@@ -384,6 +384,50 @@ def publish_bundle(
     print(f"   install: {result['install_hint']}\n")
 
 
+@app.command("run")
+def run_bundle(
+    bundle_name: str = typer.Argument(...),
+    runtime: str = typer.Option("auto", "--runtime", help="auto|host|compose"),
+) -> None:
+    """Materialize every Dagster asset for a bundle synchronously (no UI needed)."""
+    selected_runtime = runtime
+    if selected_runtime == "auto":
+        active_runtime = check_active_runtime()
+        if active_runtime == "KUBERNETES":
+            print(
+                "❌ Kubernetes is active. Use `dagster asset materialize` directly, "
+                "or the Dagster UI, after port-forwarding the cluster."
+            )
+            raise typer.Exit(code=1)
+        selected_runtime = "compose" if active_runtime == "DOCKER_COMPOSE" else "host"
+
+    print(f"\n🚀 Materializing assets for bundle '{bundle_name}' ({selected_runtime})...")
+    dagster_cmd = [
+        "dagster",
+        "asset",
+        "materialize",
+        "-m",
+        f"bundles.{bundle_name}.assets",
+        "-a",
+        "defs",
+        "--select",
+        "*",
+    ]
+
+    if selected_runtime == "compose":
+        result = subprocess.run(["docker", "exec", "-i", "dataharbor_dagster", *dagster_cmd])
+    elif selected_runtime == "host":
+        result = subprocess.run(dagster_cmd, cwd=PROJECT_ROOT)
+    else:
+        print(f"❌ Unsupported runtime: {selected_runtime}")
+        raise typer.Exit(code=1)
+
+    if result.returncode != 0:
+        print(f"❌ Bundle '{bundle_name}' run failed (exit {result.returncode}).\n")
+        raise typer.Exit(code=1)
+    print(f"✨ Bundle '{bundle_name}' materialized. Try: harbor bundle view {bundle_name}\n")
+
+
 @app.command("export")
 def export_bundle(
     bundle_name: str = typer.Argument(...),

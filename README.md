@@ -45,6 +45,22 @@ harbor up
 harbor status
 ```
 
+### 4. Try the demo bundle (no API keys, no external network)
+
+Open-core ships a working end-to-end example: a static `demo_site` fixture
+(`deploy/demo_site/`) scraped into PostgreSQL by the `demo` bundle
+(`bundles/demo/`).
+
+```bash
+harbor bundle run demo    # scrapes the local fixture, writes to PostgreSQL
+harbor bundle view demo   # renders an HTML report of the scraped rows
+```
+
+`harbor bundle run` shells out to `dagster asset materialize`; you can do the
+same by hand in the Dagster UI (materialize the `demo` asset group). Use this
+bundle's files (`fetch.py` / `scraper.py` / `db.py` / `assets.py` /
+`exporter.py`) as a starting point for your own.
+
 ---
 
 ## 📦 Publish: bundles and extractors
@@ -83,6 +99,7 @@ Flags: `--remote`, `--workdir`, `--repo-name`, `--visibility private|public`, `-
 | 🧭 **Qdrant** | Vector search / RAG | [http://localhost:6333/dashboard](http://localhost:6333/dashboard) |
 | 📊 **Grafana** | Observability dashboards | [http://localhost:3001](http://localhost:3001) |
 | 🔄 **n8n** (optional) | No-code automation hub | [http://localhost:56780](http://localhost:56780) (`harbor up --with-n8n`) |
+| 🧪 **demo_site** | Static fixture scraped by the `demo` bundle | [http://localhost:8098](http://localhost:8098) |
 
 ---
 
@@ -124,6 +141,7 @@ harbor bundle resolve <name>  # Install missing extractors from manifest
 harbor bundle pack <name>
 harbor bundle publish <name> [--dry-run] [--remote URL] [--allow-local-extractors]
 harbor bundle remove <name>
+harbor bundle run <name>      # materialize all Dagster assets synchronously (no UI needed)
 harbor bundle export / view
 harbor bundle validate
 harbor bundle doctor [name]   # engines, python deps, extractors, Dagster defs

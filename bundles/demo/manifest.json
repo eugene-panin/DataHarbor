@@ -1,0 +1,26 @@
+{
+  "name": "demo",
+  "version": "0.1.0",
+  "description": "End-to-end demo: scrapes the bundled demo_site fixture into PostgreSQL and renders an HTML report. No API keys or external network needed.",
+  "category": "demo",
+  "author": "DataHarbor",
+  "engines": {
+    "dataharbor": ">=1.0.0,<2.0.0"
+  },
+  "requirements": {
+    "extractors": [
+      "demo_site"
+    ],
+    "python": [],
+    "env": [],
+    "min_python_version": "3.10"
+  },
+  "entrypoints": {
+    "dagster": "assets:defs",
+    "celery": null
+  },
+  "observability": {
+    "staleness_sla_hours": 24,
+    "anomaly_threshold_ratio": 0.3
+  }
+}
