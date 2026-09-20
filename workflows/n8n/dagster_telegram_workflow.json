@@ -20,7 +20,7 @@
     },
     {
       "parameters": {
-        "chatId": "-1004353811042",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "text": "=🚢 <b>DataHarbor Pipeline Event: {{ $json.body.event }}</b>\n\n<b>Stage:</b> {{ $json.body.payload.stage }}\n<b>Status:</b> {{ $json.body.payload.status || 'OK' }}\n\n📊 <b>Metrics:</b>\n- Agencies Scraped: {{ $json.body.payload.agencies_scraped || 0 }}\n- DB Upserted: {{ $json.body.payload.records_upserted || 0 }}\n- Enriched Websites: {{ $json.body.payload.websites_enriched || 0 }}\n\n<i>Time: {{ $json.body.timestamp }}</i>",
         "additionalFields": {
           "parse_mode": "HTML"
