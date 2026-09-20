@@ -13,6 +13,16 @@ from apps.bundle.validator import BundleValidator
 logger = logging.getLogger(__name__)
 
 
+def _safe_extract_zip(zip_ref: zipfile.ZipFile, dest_dir: str) -> None:
+    """Extract a zip archive, rejecting members that would escape ``dest_dir`` (zip-slip)."""
+    dest_root = os.path.realpath(dest_dir)
+    for member in zip_ref.namelist():
+        member_path = os.path.realpath(os.path.join(dest_root, member))
+        if member_path != dest_root and not member_path.startswith(dest_root + os.sep):
+            raise ValueError(f"Archive member '{member}' would extract outside the target directory.")
+    zip_ref.extractall(dest_root)
+
+
 class BundleDistributor:
     """Manages installation, packaging, listing, updating, and removal of DataHarbor bundles."""
 
@@ -91,10 +101,10 @@ class BundleDistributor:
 
                 if source.endswith(".zip"):
                     with zipfile.ZipFile(source, 'r') as zip_ref:
-                        zip_ref.extractall(temp_extract)
+                        _safe_extract_zip(zip_ref, temp_extract)
                 else:
                     with tarfile.open(source, 'r:*') as tar_ref:
-                        tar_ref.extractall(temp_extract)
+                        tar_ref.extractall(temp_extract, filter="data")
 
                 # Locate manifest inside extracted directory
                 extracted_entries = [e for e in os.listdir(temp_extract) if not e.startswith(".")]

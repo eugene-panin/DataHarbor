@@ -5,7 +5,6 @@ import base64
 import logging
 import os
 import subprocess
-from pathlib import Path
 
 import typer
 
@@ -243,11 +242,6 @@ def install_bundle(
     hint = hint_for_bundle_path(str(dest.get("installed_path") or ""))
     if hint:
         print(hint)
-    from apps.cli.env_files import ensure_bundle_env
-
-    note = ensure_bundle_env(Path(PROJECT_ROOT), Path(dest.get("installed_path") or "").name)
-    if note:
-        print(note)
     _refresh_dagster_workspace()
     print()
 

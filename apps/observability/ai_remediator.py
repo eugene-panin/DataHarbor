@@ -69,10 +69,11 @@ class LLMProviderGateway:
         if not self.api_key:
             logger.warning("No API key configured for Gemini in .env (set AI_REPAIR_API_KEY or GEMINI_API_KEY).")
             return ""
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+        headers = {"x-goog-api-key": self.api_key, "Content-Type": "application/json"}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         try:
-            res = requests.post(url, json=payload, timeout=45)
+            res = requests.post(url, headers=headers, json=payload, timeout=45)
             if res.status_code == 200:
                 data = res.json()
                 return data["candidates"][0]["content"]["parts"][0]["text"]
@@ -460,16 +461,29 @@ class AIRemediatorEngine:
                 "message": f"Generated code failed AST validation: {ast_msg}"
             }
 
-        # Apply patch to scraper.py
+        # Apply patch to scraper.py, keeping a backup of the version it replaces
         scraper_path = diag["scraper_path"]
         try:
+            with open(scraper_path, encoding="utf-8") as f:
+                previous_code = f.read()
+        except OSError as e:
+            return {"status": "FAILED", "message": f"Could not read existing scraper before patching: {e}"}
+
+        backup_path = f"{scraper_path}.bak"
+        try:
+            with open(backup_path, "w", encoding="utf-8") as f:
+                f.write(previous_code)
             with open(scraper_path, "w", encoding="utf-8") as f:
                 f.write(extracted_code)
-            logger.info(f"Successfully applied AI patch to '{scraper_path}'.")
+            logger.info(f"Successfully applied AI patch to '{scraper_path}' (previous version: '{backup_path}').")
             return {
                 "status": "SUCCESS",
-                "message": f"Successfully auto-remediated '{bundle_name}'! AST Validation: PASSED.",
-                "provider": self.gateway.provider
+                "message": (
+                    f"Successfully auto-remediated '{bundle_name}'! AST Validation: PASSED. "
+                    f"Previous scraper.py saved to '{os.path.basename(backup_path)}'."
+                ),
+                "provider": self.gateway.provider,
+                "backup_path": backup_path,
             }
         except Exception as e:
             return {"status": "FAILED", "message": f"Failed writing patch to disk: {e}"}

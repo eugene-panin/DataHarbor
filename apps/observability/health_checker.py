@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from apps.db.connection import get_db_cursor
@@ -107,15 +107,18 @@ class ScraperHealthChecker:
     def cleanup_orphaned_dagster_runs(self):
         """Automatically checks Dagster instance storage for orphaned runs stuck in STARTED state and cancels them."""
         try:
-            from dagster import DagsterInstance, DagsterRunStatus
+            from dagster import DagsterInstance, DagsterRunStatus, RunsFilter
             instance = DagsterInstance.get()
-            runs = instance.get_runs()
-            for r in runs:
-                if r.status in [DagsterRunStatus.STARTED, DagsterRunStatus.STARTING, DagsterRunStatus.QUEUED]:
-                    # Check if run has been stuck over 30 minutes
-                    if r.update_timestamp and (datetime.now().timestamp() - r.update_timestamp) > 1800:
-                        logger.warning(f"⚡ Observability Cleaner: Canceling orphaned Dagster run {r.run_id[:8]} (stuck >30m)")
-                        instance.report_run_canceled(r)
+            stuck_statuses = [DagsterRunStatus.STARTED, DagsterRunStatus.STARTING, DagsterRunStatus.QUEUED]
+            # update_timestamp lives on RunRecord, not on DagsterRun itself.
+            records = instance.get_run_records(RunsFilter(statuses=stuck_statuses))
+            now = datetime.now(timezone.utc)
+            for record in records:
+                stuck_seconds = (now - record.update_timestamp).total_seconds()
+                if stuck_seconds > 1800:
+                    run_id = record.dagster_run.run_id
+                    logger.warning(f"⚡ Observability Cleaner: Canceling orphaned Dagster run {run_id[:8]} (stuck >30m)")
+                    instance.report_run_canceled(record.dagster_run)
         except Exception as e:
             logger.debug(f"Could not audit/cancel orphaned Dagster runs: {e}")
 
@@ -139,7 +142,7 @@ class ScraperHealthChecker:
         stdout_errors_by_bundle = self.scan_dagster_stdout_logs()
 
         health_results = []
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         # Gather list of all bundles from directory if DB rows empty
         all_bundle_names = set([r["bundle_name"] for r in rows]) if rows else set()
@@ -185,8 +188,13 @@ class ScraperHealthChecker:
 
             # Check 3: Staleness SLA
             if last_success:
-                last_succ_naive = last_success.replace(tzinfo=None)
-                hours_since_success = (now - last_succ_naive).total_seconds() / 3600.0
+                # created_at is TIMESTAMP WITH TIME ZONE; assume UTC if the driver ever hands us a naive value.
+                last_success_utc = (
+                    last_success.replace(tzinfo=timezone.utc)
+                    if last_success.tzinfo is None
+                    else last_success.astimezone(timezone.utc)
+                )
+                hours_since_success = (now - last_success_utc).total_seconds() / 3600.0
                 if hours_since_success > sla_hours:
                     status = "CRITICAL"
                     issues.append(

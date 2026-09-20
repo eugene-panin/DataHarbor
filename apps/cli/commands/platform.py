@@ -99,10 +99,6 @@ def doctor() -> None:
     else:
         print("  ⚠️ SSH pubkey   : none found (HTTPS credentials may still work)")
 
-    for warning in readiness.warnings:
-        # already printed structured lines above; keep list for extra context if any new
-        pass
-
     print("=" * 60)
     if all_ok:
         print("✨ Required runtime dependencies are available on PATH.")
@@ -174,6 +170,9 @@ def up(
     except subprocess.CalledProcessError as e:
         print(f"❌ Failed to start DataHarbor services: {e}")
         raise typer.Exit(code=1) from e
+    except FileNotFoundError as e:
+        print(f"❌ '{e.filename}' not found on PATH. Install Docker (and Docker Compose) first.")
+        raise typer.Exit(code=1) from e
     except KeyboardInterrupt:
         print("\nProcess interrupted by user.")
 
@@ -190,6 +189,9 @@ def down(
         else:
             subprocess.run(["tilt", "down"], check=True)
         print("✨ DataHarbor services stopped successfully.\n")
+    except FileNotFoundError as e:
+        print(f"❌ '{e.filename}' not found on PATH. Install Docker (and Docker Compose) first.")
+        raise typer.Exit(code=1) from e
     except Exception as e:
         print(f"Error stopping services: {e}")
         raise typer.Exit(code=1) from e
@@ -323,6 +325,9 @@ def uninstall(
 ) -> None:
     """Safely uninstall DataHarbor with optional data backup."""
     uninstall_script = os.path.join(PROJECT_ROOT, "uninstall.sh")
+    if not os.path.isfile(uninstall_script):
+        print(f"❌ '{uninstall_script}' not found. Nothing to run.")
+        raise typer.Exit(code=1)
     cmd = [uninstall_script]
     if purge:
         cmd.append("--purge")

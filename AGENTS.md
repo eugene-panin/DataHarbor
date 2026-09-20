@@ -46,7 +46,7 @@ Modular, self-contained business domains (a task or a pipeline of tasks). Each b
   * local id: `"demo_site"`
   * private/public git URL: `"git@github.com:acme/dh-extractor-example.git"`
   * explicit object: `{"name": "example", "source": "https://github.com/acme/dh-extractor-example.git"}`
-  Bundle itself is installed via CLI: `harbor bundle install <bundle-git-url>` — platform then auto-pulls declared extractor sources into `extractors/`.
+  Bundle itself is installed via CLI: `harbor bundle install <bundle-git-url>` — platform then auto-pulls declared extractor sources into `extractors/`. **Security:** installing a bundle clones and then imports/executes its Python (`assets.py`, `scraper.py`, `db.py`, …) — only install bundles from sources you trust, the same way you'd trust a package before running `pip install`.
   Declare extra env vars under `requirements.env` as `"FOO_API_KEY"` or `{"name":"FOO_API_KEY","required":true,"description":"..."}`. Secrets stay in repo-root `.env` (never in the bundle git). `harbor bundle install` prints the list; `harbor bundle doctor` fails if a required name is unset. Missing keys do **not** fail `harbor bundle validate` (install would otherwise roll back).
 * **`AGENT.md` (Recommended):** Short domain playbook for agents (what to ingest, operate, env). Not a platform skill — do not `harbor skill install` it. Designer/operator/remediator read it when this bundle is in scope.
 * **`scraper.py` / `fetch.py` (Optional):** Fetch + orchestration owned by the bundle author. Core provides thin `HttpFetcher` only.

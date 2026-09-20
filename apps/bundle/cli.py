@@ -68,13 +68,6 @@ def install_bundle(source: str, force: bool = False):
         hint = hint_for_bundle_path(str(res.get("installed_path") or ""))
         if hint:
             print(hint)
-        from pathlib import Path
-
-        from apps.cli.env_files import ensure_bundle_env
-
-        note = ensure_bundle_env(Path(BUNDLES_DIR).parent, Path(res.get("installed_path") or "").name)
-        if note:
-            print(note)
     except Exception as e:
         print(f"\n❌ Bundle Installation Failed: {e}")
         sys.exit(1)

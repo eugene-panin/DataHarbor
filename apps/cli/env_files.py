@@ -1,4 +1,8 @@
-"""Core `.env` is the only env file. Optional stack keys are appended when enabled."""
+"""Core `.env` is the only env file. Optional platform stack keys (compose profiles)
+are appended here when enabled. Bundle-declared keys (manifest `requirements.env`)
+are only ever printed as an install hint — see `apps/bundle/env_requirements.py` —
+never auto-written, since their values and defaults are the bundle author's call.
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,29 +26,6 @@ COMPOSE_PROFILE_ENV_BLOCKS: dict[str, tuple[str, str]] = {
         ),
     ),
 }
-
-# Bundle name → (sentinel key, block). Appended on install when that bundle is used.
-BUNDLE_ENV_BLOCKS: dict[str, tuple[str, str]] = {
-    "devops_knowledge": (
-        "DEVOPS_KNOWLEDGE_QUIZ_PROVIDER",
-        "\n".join(
-            [
-                "",
-                "# --- devops_knowledge (quiz; ingest does not use these) ---",
-                "DEVOPS_KNOWLEDGE_QUIZ_PROVIDER=gemini",
-                "DEVOPS_KNOWLEDGE_QUIZ_API_KEY=",
-                "DEVOPS_KNOWLEDGE_QUIZ_MODEL=gemini-2.5-flash",
-                "DEVOPS_KNOWLEDGE_QUIZ_LIMIT=10",
-                "DEVOPS_KNOWLEDGE_QUIZ_JUDGE_PROVIDER=anthropic",
-                "DEVOPS_KNOWLEDGE_QUIZ_JUDGE_API_KEY=",
-                "DEVOPS_KNOWLEDGE_QUIZ_JUDGE_MODEL=claude-haiku-4-5",
-                "DEVOPS_KNOWLEDGE_QUIZ_JUDGE_MAX=10",
-                "",
-            ]
-        ),
-    ),
-}
-
 
 def _append_env_block(project_root: Path, sentinel: str, block: str, *, missing: str, appended: str) -> str:
     env_path = Path(project_root) / ".env"
@@ -71,17 +52,3 @@ def ensure_compose_profile_env(project_root: Path, profile: str) -> str:
         appended=f"Appended {profile} settings to .env. Edit that block, then restart the service if needed.",
     )
 
-
-def ensure_bundle_env(project_root: Path, bundle_name: str) -> str:
-    """Append bundle quiz/API keys to `.env` once, when that bundle is installed."""
-    spec = BUNDLE_ENV_BLOCKS.get(bundle_name)
-    if not spec:
-        return ""
-    sentinel, block = spec
-    return _append_env_block(
-        project_root,
-        sentinel,
-        block,
-        missing="Missing .env — copy .env.example first, then re-run bundle install.",
-        appended=f"Appended {bundle_name} settings to .env. Put API keys in that block.",
-    )
