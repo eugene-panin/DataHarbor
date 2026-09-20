@@ -153,17 +153,26 @@ Rompe la demo a propósito y deja que HAP la repare:
 ```bash
 # Simula un drift: renombra el selector que busca el extractor de demo_site
 sed -i.bak 's/h1, h2, h3/h1, h3/' extractors/demo_site/extractor.py
-harbor bundle run demo           # ahora devuelve 0 filas — una anomalía ZERO_ROWS real
-harbor health                    # marca demo como DEGRADED
-harbor health --auto-fix demo    # la IA diagnostica, parchea, valida con AST y vuelve a probar
-harbor bundle run demo           # las filas vuelven
+harbor bundle run demo                               # ahora devuelve 0 filas — una anomalía ZERO_ROWS real
+harbor health                                         # marca demo como DEGRADED
+harbor health --auto-fix demo --url http://demo_site/   # diagnostica, parchea, valida AST, verifica en vivo
+harbor bundle run demo                                # las filas vuelven
 ```
 
-(Necesita una clave de LLM en `.env` — `AI_REPAIR_PROVIDER` /
+`--url` cierra el ciclo de verdad: tras la validación AST, el parche se
+aplica y **se verifica con un scrape en vivo contra esa URL**. Si sigue
+devolviendo cero filas, el fallo se envía de vuelta al modelo para un
+segundo intento; si ese también falla, `scraper.py` se revierte a la
+versión previa al parche en lugar de quedar en un estado que "parece
+parcheado" pero no funciona. Sin `--url` el parche solo pasa una
+comprobación de importación — suficiente para detectar una referencia
+rota, no para demostrar que el scrape funciona.
+
+Necesita una clave de LLM en `.env` — `AI_REPAIR_PROVIDER` /
 `AI_REPAIR_API_KEY`, o `AI_REPAIR_PROVIDER=ollama` para un modelo local.
 ¿No tienes ninguna clave configurada? `harbor health --fix demo` imprime el
 prompt de diagnóstico en su lugar, para que veas exactamente de qué
-partiría el agente.)
+partiría el agente.
 
 ---
 
@@ -221,7 +230,7 @@ es opcional (crea automáticamente un repo privado en GitHub).
 ```bash
 harbor doctor             # Docker, Tilt, Kind, Python, Git + Publish readiness
 harbor health             # Salud de scrapers, anomalías de filas cero, SLA
-harbor health --auto-fix <bnd> # Remediador con IA y validación AST
+harbor health --auto-fix <bnd> --url <url> # Remediador con IA: validación AST + verificación en vivo + rollback
 harbor up                 # Kubernetes/Tilt (o --compose)
 harbor down
 harbor status

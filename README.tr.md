@@ -154,17 +154,26 @@ Demoyu bilerek bozun, sonra HAP'ın düzeltmesine izin verin:
 ```bash
 # Drift'i simüle edin: demo_site extractor'ının aradığı selector'ı yeniden adlandırın
 sed -i.bak 's/h1, h2, h3/h1, h3/' extractors/demo_site/extractor.py
-harbor bundle run demo           # artık 0 satır döner — gerçek bir ZERO_ROWS anomalisi
-harbor health                    # demo'yu DEGRADED olarak işaretler
-harbor health --auto-fix demo    # AI teşhis eder, yamalar, AST ile doğrular, yeniden test eder
-harbor bundle run demo           # satırlar geri geldi
+harbor bundle run demo                               # artık 0 satır döner — gerçek bir ZERO_ROWS anomalisi
+harbor health                                         # demo'yu DEGRADED olarak işaretler
+harbor health --auto-fix demo --url http://demo_site/   # teşhis, yama, AST doğrulama, canlı doğrulama
+harbor bundle run demo                                # satırlar geri geldi
 ```
 
-(`.env` içinde bir LLM anahtarı gerekir — `AI_REPAIR_PROVIDER` /
+`--url` döngüyü gerçekten kapatır: AST doğrulamasından sonra yama uygulanır
+ve **o URL'ye karşı canlı bir scrape ile doğrulanır**. Hâlâ sıfır satır
+dönüyorsa, hata bir kez daha denemesi için modele geri beslenir; bu da
+başarısız olursa `scraper.py`, "yamalanmış gibi görünen ama çalışmayan"
+bir durumda bırakılmak yerine yamadan önceki sürüme geri döndürülür.
+`--url` olmadan yama yalnızca bir import kontrolünden geçer — bozuk bir
+referansı yakalamaya yeter, scrape'in gerçekten çalıştığını kanıtlamaya
+yetmez.
+
+`.env` içinde bir LLM anahtarı gerekir — `AI_REPAIR_PROVIDER` /
 `AI_REPAIR_API_KEY`, ya da yerel bir model için
 `AI_REPAIR_PROVIDER=ollama`. Anahtar ayarlanmadı mı? `harbor health --fix
 demo`, bunun yerine ajanın tam olarak neyle çalışacağını görebilmeniz için
-diagnostic prompt'u yazdırır.)
+diagnostic prompt'u yazdırır.
 
 ---
 
@@ -223,7 +232,7 @@ deposu otomatik oluşturma).
 ```bash
 harbor doctor             # Docker, Tilt, Kind, Python, Git + Publish readiness
 harbor health             # Scraper sağlığı, sıfır satır anomalileri, SLA
-harbor health --auto-fix <bnd> # AST doğrulamalı AI onarıcı
+harbor health --auto-fix <bnd> --url <url> # AI onarıcı: AST doğrulama + canlı doğrulama + hata durumunda geri alma
 harbor up                 # Kubernetes/Tilt (veya --compose)
 harbor down
 harbor status

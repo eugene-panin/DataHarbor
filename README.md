@@ -137,16 +137,23 @@ Break the demo on purpose, then let HAP fix it:
 ```bash
 # Simulate drift: rename the selector the demo_site extractor looks for
 sed -i.bak 's/h1, h2, h3/h1, h3/' extractors/demo_site/extractor.py
-harbor bundle run demo           # now returns 0 rows — a real ZERO_ROWS anomaly
-harbor health                    # flags demo as DEGRADED
-harbor health --auto-fix demo    # AI diagnoses, patches, AST-validates, re-tests
-harbor bundle run demo           # rows are back
+harbor bundle run demo                              # now returns 0 rows — a real ZERO_ROWS anomaly
+harbor health                                        # flags demo as DEGRADED
+harbor health --auto-fix demo --url http://demo_site/   # diagnose, patch, AST-validate, live-verify
+harbor bundle run demo                               # rows are back
 ```
 
-(Needs an LLM key in `.env` — `AI_REPAIR_PROVIDER` / `AI_REPAIR_API_KEY`, or
+`--url` closes the loop for real: after AST validation the patch is applied and
+**live-scraped against that URL**. If it still returns zero rows, the failure
+is fed back to the model for one retry; if that also fails, `scraper.py` is
+rolled back to the pre-patch version instead of being left in a broken,
+"looks patched" state. Without `--url` the patch only gets an import check —
+enough to catch a broken reference, not enough to prove the scrape works.
+
+Needs an LLM key in `.env` — `AI_REPAIR_PROVIDER` / `AI_REPAIR_API_KEY`, or
 `AI_REPAIR_PROVIDER=ollama` for a local model. No key configured? `harbor
 health --fix demo` prints the diagnostic prompt instead so you can see
-exactly what the agent would work from.)
+exactly what the agent would work from.
 
 ---
 
@@ -196,7 +203,7 @@ Flags: `--remote`, `--workdir`, `--repo-name`, `--visibility private|public`, `-
 ```bash
 harbor doctor             # Docker, Tilt, Kind, Python, Git + Publish readiness
 harbor health             # Scraper health, zero-row anomalies, SLA
-harbor health --auto-fix <bnd> # AI remediator with AST validation
+harbor health --auto-fix <bnd> --url <url> # AI remediator: AST-validate + live-verify + rollback on failure
 harbor up                 # Kubernetes/Tilt (or --compose)
 harbor down
 harbor status

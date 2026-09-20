@@ -149,16 +149,24 @@ harbor bundle view demo   # рендерит HTML-отчёт по собранн
 ```bash
 # Имитируем дрейф разметки: переименуем селектор, который ищет demo_site-экстрактор
 sed -i.bak 's/h1, h2, h3/h1, h3/' extractors/demo_site/extractor.py
-harbor bundle run demo           # теперь возвращает 0 строк — настоящая аномалия ZERO_ROWS
-harbor health                    # помечает demo как DEGRADED
-harbor health --auto-fix demo    # AI диагностирует, патчит, валидирует AST, перепроверяет
-harbor bundle run demo           # строки снова на месте
+harbor bundle run demo                               # теперь возвращает 0 строк — настоящая аномалия ZERO_ROWS
+harbor health                                         # помечает demo как DEGRADED
+harbor health --auto-fix demo --url http://demo_site/   # диагностика, патч, AST-валидация, живая проверка
+harbor bundle run demo                                # строки снова на месте
 ```
 
-(Нужен ключ LLM в `.env` — `AI_REPAIR_PROVIDER` / `AI_REPAIR_API_KEY`, либо
+`--url` реально замыкает цикл: после AST-валидации патч применяется и
+**проверяется живым скрейпом по этому URL**. Если строк по-прежнему ноль,
+ошибка передаётся модели обратно на один повторный заход; если и это не
+помогает, `scraper.py` откатывается к версии до патча, а не остаётся в
+состоянии "выглядит пропатченным, но не работает". Без `--url` патч
+проходит только импорт-проверку — этого достаточно, чтобы поймать битую
+ссылку в коде, но не достаточно, чтобы доказать, что скрейп реально работает.
+
+Нужен ключ LLM в `.env` — `AI_REPAIR_PROVIDER` / `AI_REPAIR_API_KEY`, либо
 `AI_REPAIR_PROVIDER=ollama` для локальной модели. Нет ключа? `harbor
 health --fix demo` вместо этого выведет диагностический промпт, чтобы вы
-увидели, от чего именно отталкивался бы агент.)
+увидели, от чего именно отталкивался бы агент.
 
 ---
 
@@ -216,7 +224,7 @@ GitHub автоматически. Если в `requirements.extractors` всё 
 ```bash
 harbor doctor             # Docker, Tilt, Kind, Python, Git + Publish readiness
 harbor health             # Здоровье скраперов, аномалии нулевых строк, SLA
-harbor health --auto-fix <bnd> # AI-ремедиатор с AST-валидацией
+harbor health --auto-fix <bnd> --url <url> # AI-ремедиатор: AST-валидация + живая проверка + откат при неудаче
 harbor up                 # Kubernetes/Tilt (или --compose)
 harbor down
 harbor status

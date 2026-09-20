@@ -271,6 +271,12 @@ def health(
     auto_fix: str | None = typer.Option(
         None, "--auto-fix", help="Autonomously patch scraper.py for a bundle"
     ),
+    url: str | None = typer.Option(
+        None,
+        "--url",
+        help="Live 1-page URL to verify --auto-fix against (SUCCESS/ZERO_ROWS/FAILED). "
+        "Without it, only import is verified and a bad patch may still look SUCCESS.",
+    ),
 ) -> None:
     """Audit scrapers: zero-row anomalies, SLA staleness, AI auto-healing."""
     if auto_fix:
@@ -279,7 +285,7 @@ def health(
         from apps.observability.ai_remediator import AIRemediatorEngine
 
         remediator = AIRemediatorEngine()
-        result = remediator.autofix_bundle_scraper(auto_fix)
+        result = remediator.autofix_bundle_scraper(auto_fix, verify_url=url)
         status_symbol = "✅ SUCCESS" if result["status"] == "SUCCESS" else "❌ FAILED"
         print(f"[{status_symbol}] {result['message']}\n")
         if result["status"] != "SUCCESS":

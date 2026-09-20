@@ -50,6 +50,14 @@ class DemoScraper:
         )
         return items
 
+    def scrape(self, target_url: str | None = None) -> list[dict[str, Any]]:
+        """HAP verification entrypoint (`harbor agent-protocol test` / `health --auto-fix --url`).
+
+        The demo always scrapes its fixed PAGES regardless of target_url — accepted
+        for interface compatibility with the standard single-URL scraper convention.
+        """
+        return self.scrape_all()
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

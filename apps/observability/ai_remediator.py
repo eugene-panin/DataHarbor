@@ -437,56 +437,105 @@ class AIRemediatorEngine:
         except TypeError:
             return scrape_fn(url)
 
-    def autofix_bundle_scraper(self, bundle_name: str) -> dict[str, Any]:
-        """Queries LLM provider, validates AST, and applies patch autonomously."""
-        diag = self.diagnose_bundle_failure(bundle_name)
-        prompt = diag["ai_prompt"]
-
-        print(f"🤖 Querying LLM Provider ({self.gateway.provider})...")
+    def _request_patch(self, prompt: str) -> tuple[str | None, dict[str, Any] | None]:
+        """Query the LLM and AST-validate the result. Returns (code, None) or (None, failure_dict)."""
         response_text = self.gateway.query_provider(prompt)
-
         if not response_text:
-            return {
+            return None, {
                 "status": "FAILED",
-                "message": f"No response received from LLM provider '{self.gateway.provider}'. Check API key in .env."
+                "message": f"No response received from LLM provider '{self.gateway.provider}'. Check API key in .env.",
             }
-
         extracted_code = self.extract_code_block(response_text)
         is_valid_ast, ast_msg = self.validate_python_ast(extracted_code)
-
         if not is_valid_ast:
             logger.error(f"Generated patch failed AST validation: {ast_msg}")
-            return {
-                "status": "FAILED",
-                "message": f"Generated code failed AST validation: {ast_msg}"
-            }
+            return None, {"status": "FAILED", "message": f"Generated code failed AST validation: {ast_msg}"}
+        return extracted_code, None
 
-        # Apply patch to scraper.py, keeping a backup of the version it replaces
+    def autofix_bundle_scraper(self, bundle_name: str, *, verify_url: str | None = None) -> dict[str, Any]:
+        """Query the LLM, AST-validate, apply the patch, then verify it actually works.
+
+        Without ``verify_url`` this only proves the patched module imports cleanly —
+        strictly more than AST validation (catches bad references/attrs), but not a
+        scrape proof. With ``verify_url`` it runs one live scrape against that URL;
+        on failure it retries once with the failure fed back to the model, then
+        rolls back to the pre-patch ``scraper.py`` rather than leaving a scraper that
+        looks patched but doesn't work.
+        """
+        diag = self.diagnose_bundle_failure(bundle_name)
         scraper_path = diag["scraper_path"]
+
         try:
             with open(scraper_path, encoding="utf-8") as f:
                 previous_code = f.read()
         except OSError as e:
             return {"status": "FAILED", "message": f"Could not read existing scraper before patching: {e}"}
 
-        backup_path = f"{scraper_path}.bak"
+        prompt = diag["ai_prompt"]
+        verification: dict[str, Any] = {}
+
+        for attempt in (1, 2):
+            print(f"🤖 Querying LLM Provider ({self.gateway.provider}) — attempt {attempt}/2...")
+            extracted_code, failure = self._request_patch(prompt)
+            if failure:
+                return failure
+
+            backup_path = f"{scraper_path}.bak"
+            try:
+                with open(backup_path, "w", encoding="utf-8") as f:
+                    f.write(previous_code)
+                with open(scraper_path, "w", encoding="utf-8") as f:
+                    f.write(extracted_code)
+            except Exception as e:
+                return {"status": "FAILED", "message": f"Failed writing patch to disk: {e}"}
+
+            print(f"🧪 Verifying patch ({'live scrape against ' + verify_url if verify_url else 'import only'})...")
+            verification = self.run_verification_test(bundle_name, url=verify_url)
+            if verification.get("status") in {"SUCCESS", "IMPORT_OK"}:
+                logger.info(f"Applied and verified AI patch to '{scraper_path}' (previous version: '{backup_path}').")
+                note = "" if verify_url else " (import-only — pass --url for a live scrape proof)"
+                return {
+                    "status": "SUCCESS",
+                    "message": (
+                        f"Successfully auto-remediated '{bundle_name}'! AST validation + verification "
+                        f"({verification['status']}) passed{note}. Previous scraper.py saved to "
+                        f"'{os.path.basename(backup_path)}'."
+                    ),
+                    "provider": self.gateway.provider,
+                    "backup_path": backup_path,
+                    "verification": verification,
+                }
+
+            if attempt == 1 and verify_url:
+                logger.warning(f"Patch attempt 1 failed verification: {verification}. Retrying with feedback.")
+                prompt = (
+                    f"{diag['ai_prompt']}\n\n"
+                    "### ⚠️ PREVIOUS ATTEMPT FAILED VERIFICATION\n"
+                    f"Your last patch was applied and tested against {verify_url!r}, result:\n"
+                    f"{json.dumps(verification, default=str)}\n\n"
+                    "Here is the patch that failed:\n```python\n"
+                    f"{extracted_code}\n```\n"
+                    "Fix it and return the complete corrected scraper.py."
+                )
+
+        # Both attempts failed verification (or one attempt, when verify_url is unset) — roll back.
         try:
-            with open(backup_path, "w", encoding="utf-8") as f:
-                f.write(previous_code)
             with open(scraper_path, "w", encoding="utf-8") as f:
-                f.write(extracted_code)
-            logger.info(f"Successfully applied AI patch to '{scraper_path}' (previous version: '{backup_path}').")
-            return {
-                "status": "SUCCESS",
-                "message": (
-                    f"Successfully auto-remediated '{bundle_name}'! AST Validation: PASSED. "
-                    f"Previous scraper.py saved to '{os.path.basename(backup_path)}'."
-                ),
-                "provider": self.gateway.provider,
-                "backup_path": backup_path,
-            }
+                f.write(previous_code)
         except Exception as e:
-            return {"status": "FAILED", "message": f"Failed writing patch to disk: {e}"}
+            return {
+                "status": "FAILED",
+                "message": f"Patch failed verification AND rollback failed: {e}. Manually restore from '{scraper_path}.bak'.",
+                "verification": verification,
+            }
+        return {
+            "status": "FAILED",
+            "message": (
+                f"Patch failed verification ({verification.get('status')}) after "
+                f"{'2 attempts' if verify_url else '1 attempt'}. Rolled back to the original scraper.py."
+            ),
+            "verification": verification,
+        }
 
 if __name__ == "__main__":
     engine = AIRemediatorEngine()
