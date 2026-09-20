@@ -1,14 +1,83 @@
-# 🌊 DataHarbor
+# 🌊 DataHarbor — web scrapers that fix themselves
 
 [![CI](https://github.com/eugene-panin/DataHarbor/actions/workflows/ci.yml/badge.svg)](https://github.com/eugene-panin/DataHarbor/actions/workflows/ci.yml)
-
-**DataHarbor** is a modular open-core data platform (ClickHouse OLAP, Qdrant, Dagster, plugin bundles/extractors) with autonomous scraper self-healing (model-agnostic AI auto-remediation & HAP v1.0). Optional ML extras (`uv sync --extra ml`): Whisper, EasyOCR, embeddings, HDBSCAN.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 > **Languages:** 🇬🇧 English · [🇷🇺 Русский](README.ru.md) · [🇺🇦 Українська](README.uk.md) · [🇪🇸 Español](README.es.md) · [🇹🇷 Türkçe](README.tr.md)
+
+Every scraper eventually breaks: a site redesigns its markup, a selector
+stops matching, and a pipeline quietly starts returning zero rows. Usually
+that means a human noticing the gap in a dashboard days later, then hand-editing
+a parser. **DataHarbor's scrapers diagnose their own failures and patch
+themselves** — an AI agent reads the failure signal, proposes a code fix,
+validates it (AST + a real test run against the target), and applies it. You
+review the diff like any other commit.
+
+That loop is the **Harbor Agent Protocol (HAP)**, and it's the reason this
+project exists. Everything else — ClickHouse, Postgres, Qdrant, Dagster,
+observability — is the batteries-included platform that self-healing needs
+to actually run in production, not just in a demo.
+
+```mermaid
+flowchart LR
+    A[Scraper run] -->|403 / 429 / ZERO_ROWS| B[harbor health<br/>detects anomaly]
+    B --> C[HAP diagnose<br/>builds failure context]
+    C --> D[AI proposes a patch<br/>Claude / GPT / Gemini / DeepSeek / Ollama]
+    D --> E[AST validation]
+    E -->|invalid| D
+    E -->|valid| F[Test run against target]
+    F -->|fails| D
+    F -->|passes| G[Patch applied<br/>scraper.py updated]
+    G --> A
+```
+
+## Why this exists
+
+- **Self-healing, not just alerting.** `harbor health --auto-fix <bundle>`
+  closes the loop end to end: detect → diagnose → patch → validate → deploy.
+  Model-agnostic (Claude, GPT, Gemini, DeepSeek, or a local Ollama model) —
+  bring your own key, or none at all.
+- **Batteries-included data stack.** PostgreSQL (`pgvector`), ClickHouse OLAP,
+  Qdrant vector search, Dagster orchestration, and Grafana observability wired
+  together and running in one `harbor up`, so a pipeline has somewhere real to
+  land data on day one.
+- **Built for AI coding agents, not just humans.** [AGENTS.md](AGENTS.md) is a
+  single agent-agnostic contract (skill routing, architecture, verification
+  rules) that Claude Code, Codex, Gemini CLI, and Antigravity all read the
+  same way — see [§ AI agents & HAP](#-ai-agents--the-harbor-agent-protocol).
+
+**What's open vs. private:** the platform (`apps/`), the CLI, and one
+end-to-end `demo` bundle are open-core and live in this repo. Real scraping
+targets — the actual bundles and site-specific extractors — are private by
+design (see [Architecture](#-architecture-core--bundles--extractors) below)
+and installed from your own git repos with `harbor bundle install`. Cloning
+this repo gets you a working platform and a working example, not a library
+of ready-made scrapers.
 
 ---
 
 ## 🏛 Architecture: Core / Bundles / Extractors
+
+```mermaid
+flowchart TB
+    subgraph Core["Core (apps/) — open, in this repo"]
+        CLI[harbor CLI]
+        Dagster[Dagster orchestration]
+        DB[(Postgres · ClickHouse · Qdrant)]
+        Obs[Observability + HAP]
+    end
+    subgraph Bundles["Bundles (bundles/) — one git repo each"]
+        B1[fetch → parse → schema → export]
+    end
+    subgraph Extractors["Extractors (extractors/) — one per source"]
+        E1["parse(html) only<br/>no HTTP/proxy"]
+    end
+    CLI -->|harbor bundle install| Bundles
+    Bundles -->|requirements.extractors| Extractors
+    Bundles --> DB
+    Dagster --> Bundles
+    Obs -.->|failure signal| CLI
+```
 
 * **Core (`apps/`)** — open platform runtime: PostgreSQL `pgvector`, ClickHouse OLAP, Qdrant, SeaweedFS S3, Dagster, Core notifier (Telegram/Slack/webhooks). Optional: `uv sync --extra ml`, n8n via `--with-n8n`. Backup CLI stays in Core (`harbor backup`).
 * **Bundles (`bundles/`)** — business pipelines (fetch → schema → Dagster → HTML/CSV export). One bundle = one git repository when published.
@@ -60,6 +129,24 @@ harbor bundle view demo   # renders an HTML report of the scraped rows
 same by hand in the Dagster UI (materialize the `demo` asset group). Use this
 bundle's files (`fetch.py` / `scraper.py` / `db.py` / `assets.py` /
 `exporter.py`) as a starting point for your own.
+
+### 5. See it heal itself
+
+Break the demo on purpose, then let HAP fix it:
+
+```bash
+# Simulate drift: rename the selector the demo_site extractor looks for
+sed -i.bak 's/h1, h2, h3/h1, h3/' extractors/demo_site/extractor.py
+harbor bundle run demo           # now returns 0 rows — a real ZERO_ROWS anomaly
+harbor health                    # flags demo as DEGRADED
+harbor health --auto-fix demo    # AI diagnoses, patches, AST-validates, re-tests
+harbor bundle run demo           # rows are back
+```
+
+(Needs an LLM key in `.env` — `AI_REPAIR_PROVIDER` / `AI_REPAIR_API_KEY`, or
+`AI_REPAIR_PROVIDER=ollama` for a local model. No key configured? `harbor
+health --fix demo` prints the diagnostic prompt instead so you can see
+exactly what the agent would work from.)
 
 ---
 
@@ -163,11 +250,25 @@ harbor extractor remove <name>
 
 ---
 
-## 🤖 AI agent skill & autonomous repair
+## 🤖 AI agents & the Harbor Agent Protocol
 
-The repo includes an agent skill at **[.agents/skills/dataharbor-remediator/SKILL.md](.agents/skills/dataharbor-remediator/SKILL.md)**.
+[AGENTS.md](AGENTS.md) is the single, agent-agnostic contract for this repo —
+architecture, the bundle/extractor manifest schema, and HAP v1.0's
+diagnose → patch → validate → test flow. `CLAUDE.md` and `GEMINI.md` are thin
+pointers to it, so **Claude Code**, **Codex**, **Gemini CLI**, and
+**Antigravity** all read the same source of truth instead of drifting.
 
-Agents (**Codex**, **Antigravity**, **Claude Code**, **Gemini CLI**) can follow HAP v1.0 for safe, token-efficient failure repair.
+Three scoped skills route work by intent instead of one do-everything prompt:
+
+| Skill | Job |
+| :--- | :--- |
+| [`dataharbor-bundle-designer`](.agents/skills/dataharbor-bundle-designer/SKILL.md) | Write or scaffold a new bundle/extractor |
+| [`dataharbor-bundle-operator`](.agents/skills/dataharbor-bundle-operator/SKILL.md) | Check health/SLA, run `harbor agent-protocol summary` |
+| [`dataharbor-remediator`](.agents/skills/dataharbor-remediator/SKILL.md) | Diagnose and repair a broken scraper (HAP) |
+
+`harbor skill install` copies them into `~/.claude/skills` (and the
+equivalent path for Codex/Gemini/Antigravity) so any of those tools picks
+them up automatically.
 
 ---
 
