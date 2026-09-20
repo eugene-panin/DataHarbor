@@ -29,25 +29,25 @@ def list_bundle_templates() -> list[BundleTemplate]:
             id="default",
             title="Full pipeline",
             description="Fetch + scraper + db + Dagster assets (standard ingest bundle)",
-            files=["manifest.json", "__init__.py", "assets.py", "fetch.py", "scraper.py", "db.py"],
+            files=["manifest.json", "AGENT.md", "__init__.py", "assets.py", "fetch.py", "scraper.py", "db.py"],
         ),
         BundleTemplate(
             id="ml",
             title="ML / RAG",
             description="Dagster assets + model registry db; no scrape (datasets on S3 / Qdrant)",
-            files=["manifest.json", "__init__.py", "assets.py", "db.py"],
+            files=["manifest.json", "AGENT.md", "__init__.py", "assets.py", "db.py"],
         ),
         BundleTemplate(
             id="etl",
             title="ETL only",
             description="Dagster assets + Postgres schema; no fetch/scrape (data already in platform)",
-            files=["manifest.json", "__init__.py", "assets.py", "db.py"],
+            files=["manifest.json", "AGENT.md", "__init__.py", "assets.py", "db.py"],
         ),
         BundleTemplate(
             id="dagster",
             title="Dagster minimal",
             description="Empty Dagster code location only (assets.py + manifest)",
-            files=["manifest.json", "__init__.py", "assets.py"],
+            files=["manifest.json", "AGENT.md", "__init__.py", "assets.py"],
         ),
         BundleTemplate(
             id="catalog",
@@ -58,6 +58,7 @@ def list_bundle_templates() -> list[BundleTemplate]:
             ),
             files=[
                 "manifest.json",
+                "AGENT.md",
                 "__init__.py",
                 "assets.py",
                 "db.py",
@@ -95,6 +96,34 @@ def _write(path: str, content: str) -> None:
         os.makedirs(parent, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
+
+
+def _write_agent_md(root: str, bundle_name: str) -> None:
+    """Domain playbook for agents. Not a platform skill — do not copy to ~/.claude/skills."""
+    _write(
+        os.path.join(root, "AGENT.md"),
+        f"""# {bundle_name} — agent playbook
+
+Not a platform skill. Use `dataharbor-bundle-designer` / `operator` / `remediator`.
+Read this file when the user names this bundle.
+
+## What it is
+
+TODO: one paragraph — domain, consumers, grain (one row per what).
+
+## Operate
+
+```bash
+harbor agent-protocol summary {bundle_name}
+```
+
+Useful paths: `manifest.json`, `sources.json` if present. Do not read `scraper.py` on duty unless remediator.
+
+## Env
+
+Declare extra keys in `manifest.json` → `requirements.env`. User adds them to repo-root `.env`.
+""",
+    )
 
 
 def _write_plugin_tests(root: str, bundle_name: str) -> list[str]:
@@ -143,6 +172,7 @@ def _base_manifest(
         "requirements": {
             "extractors": extractor_reqs,
             "python": python_reqs or [],
+            "env": [],
             "min_python_version": "3.10",
         },
         "entrypoints": {
@@ -1301,6 +1331,8 @@ def create_bundle(
     )
 
     files = _TEMPLATE_BUILDERS[tpl](root, bundle_name, manifest)
+    _write_agent_md(root, bundle_name)
+    files.append("AGENT.md")
     files.extend(_write_plugin_tests(root, bundle_name))
 
     is_valid, errors = BundleValidator(root).validate()

@@ -31,6 +31,7 @@ def test_create_bundle_templates_validate(template_id: str):
         assert result["template"] == template_id
         root = Path(result["path"])
         assert (root / "manifest.json").exists()
+        assert (root / "AGENT.md").exists()
         assert (root / "assets.py").exists()
         assert (root / "tests" / "test_plugin.py").exists()
         if template_id == "default":

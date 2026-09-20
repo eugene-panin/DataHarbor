@@ -20,11 +20,11 @@ def install_skills() -> None:
     print("  Installed Skills:")
     for sk in res["installed_skills"]:
         print(f"    - {sk}")
+    print("  Fan-out targets:")
+    for target in res.get("targets") or []:
+        print(f"    - {target}")
     print("=" * 70)
-    print(
-        "✨ Skills successfully installed and registered for Codex, Antigravity, "
-        "Claude Code, and Gemini CLI!\n"
-    )
+    print("✨ Skills copied from .agents/skills (canonical). Router: AGENTS.md §0.\n")
 
 
 @app.command("list")

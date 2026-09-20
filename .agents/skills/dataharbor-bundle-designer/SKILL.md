@@ -1,17 +1,20 @@
 ---
 name: dataharbor-bundle-designer
-description: Authoritative runbook for designing and building DataHarbor domain bundles against the live plugin contract. Trigger whenever asked to create a new bundle, design a bundle schema, or change an existing DataHarbor bundle.
+description: "Use when the user wants to create, write, scaffold, or design a DataHarbor bundle or its schema (RU: написать бандл, новый бандл, схема бандла, extractors). Also when changing existing bundle code. Do not use for health/monitor/results (operator) or scrape repair (remediator)."
 ---
 
 # DataHarbor Bundle Designer
 
 Working tool, not a wish-list. If this skill and the code disagree, trust the code:
 
+Operate/monitor/results sessions: use `dataharbor-bundle-operator` (`harbor agent-protocol summary`), not this skill.
+
 - `AGENTS.md`
 - `apps/bundle/scaffold.py` — what `harbor bundle new` actually writes
 - `apps/bundle/plugin_contract.py` — engines / entrypoints / Celery ban
 - `apps/bundle/validator.py` — what `harbor bundle validate` fails on
 - `apps/dagster_app/workspace_builder.py` — one Dagster code location per bundle
+- `bundles/<name>/AGENT.md` — domain playbook if present (not a fourth skill)
 
 Do not invent Celery workers, Core Playwright, `CurlScraper` impersonation, or Core merging all `assets.py` into one location.
 
@@ -36,7 +39,7 @@ Do not scaffold, edit `manifest.json`, write schemas/scrapers/assets, or run mut
 **Entry.** “What do you want to do with a DataHarbor bundle: create a new bundle, design its schema, or change an existing bundle?”
 
 - New / schema: next ask for a short snake_case working name and domain description.
-- Existing: next ask for name or path and the requested change; then read-only inspect.
+- Existing: next ask for name or path and the requested change; then read `bundles/<name>/AGENT.md` if present; then read-only inspect.
 
 **Round 1 — outcome**
 
@@ -172,6 +175,7 @@ Scaffold defaults (follow these unless discovery says otherwise):
   "requirements": {
     "extractors": [],
     "python": [],
+    "env": [],
     "min_python_version": "3.10"
   },
   "entrypoints": {
@@ -190,6 +194,7 @@ Scaffold defaults (follow these unless discovery says otherwise):
 - `entrypoints.dagster: null` means no Dagster defs (workspace skips the location).
 - `requirements.extractors`: local id (`"demo_site"`), git URL, or `{"name": "...", "source": "https://..."}`.
 - `requirements.python`: extra pip specs for **this bundle** (e.g. `"playwright>=1.41"`). Core does not ship Playwright.
+- `requirements.env`: extra `.env` names this bundle reads. String (`"FOO_API_KEY"`) or `{"name","required","description"}`. Core never writes `.env`. Install prints the list; `harbor bundle doctor` fails on missing **required** keys. Optional unset → warn. Schema errors fail `validate`; missing values do not (so install is not rolled back).
 - Observability thresholds are read by `ScraperHealthChecker`. Env fallbacks: `OBSERVABILITY_STALENESS_SLA_HOURS=12`, `OBSERVABILITY_ANOMALY_THRESHOLD_RATIO=0.3`.
 
 Validator also fails if `scraper.py` calls `get_extractor("id")` / `require_extractor("id")` for an undeclared id, or if a declared extractor is missing/invalid under `extractors/`.
@@ -201,6 +206,7 @@ Validator also fails if `scraper.py` calls `get_extractor("id")` / `require_extr
 ```text
 extractors/<id>/
 ├── manifest.json    # name, version, description, domains, entrypoint (extractor:parse)
+├── AGENT.md         # optional parse playbook (not a platform skill)
 ├── extractor.py     # parse(html, source_url) -> list[dict]; optional generate_page_urls
 └── tests/
 ```
@@ -295,6 +301,12 @@ Before claiming the bundle is valid or “conforms”:
 
 Do not commit unless the user asked. Do not pack/publish unless they asked.
 
+
+---
+
+---
+
+---
 
 ---
 

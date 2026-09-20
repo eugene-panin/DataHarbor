@@ -43,12 +43,12 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-dataharbor}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - PROXY_URL=${PROXY_URL}
-      - PROXY_LIST=${PROXY_LIST}
-      - RESIDENTIAL_PROXY_URL=${RESIDENTIAL_PROXY_URL}
-      - RESIDENTIAL_PROXY_LIST=${RESIDENTIAL_PROXY_LIST}
-      - DATACENTER_PROXY_URL=${DATACENTER_PROXY_URL}
-      - DATACENTER_PROXY_LIST=${DATACENTER_PROXY_LIST}
+      - PROXY_URL=${PROXY_URL:-}
+      - PROXY_LIST=${PROXY_LIST:-}
+      - RESIDENTIAL_PROXY_URL=${RESIDENTIAL_PROXY_URL:-}
+      - RESIDENTIAL_PROXY_LIST=${RESIDENTIAL_PROXY_LIST:-}
+      - DATACENTER_PROXY_URL=${DATACENTER_PROXY_URL:-}
+      - DATACENTER_PROXY_LIST=${DATACENTER_PROXY_LIST:-}
       - DAGSTER_HOME=/opt/dagster/dagster_home
       - DAGSTER_WORKSPACE_NAME=${DAGSTER_WORKSPACE_NAME:-all}
       - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
@@ -91,9 +91,8 @@ services:
       - seaweed_data:/data
     restart: unless-stopped
 
-  # 4. n8n (OPTIONAL) — no-code automation hub
-  # Start with: docker compose --profile n8n up -d
-  # Or: harbor up --compose --with-n8n
+  # 4. n8n (optional profile). Keys are appended to `.env` by
+  # `harbor up --compose --with-n8n` — they are not in `.env.example`.
   n8n:
     profiles: ["n8n"]
     image: docker.n8n.io/n8nio/n8n:latest
@@ -109,10 +108,10 @@ services:
       - WEBHOOK_URL=http://localhost:56780/
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_INSTANCE_OWNER_MANAGED_BY_ENV=true
-      - N8N_INSTANCE_OWNER_EMAIL=${N8N_ADMIN_EMAIL}
-      - N8N_INSTANCE_OWNER_PASSWORD_HASH=${N8N_INSTANCE_OWNER_PASSWORD_HASH}
-      - N8N_INSTANCE_OWNER_FIRST_NAME=${N8N_INSTANCE_OWNER_FIRST_NAME}
-      - N8N_INSTANCE_OWNER_LAST_NAME=${N8N_INSTANCE_OWNER_LAST_NAME}
+      - N8N_INSTANCE_OWNER_EMAIL=${N8N_INSTANCE_OWNER_EMAIL:-}
+      - N8N_INSTANCE_OWNER_PASSWORD_HASH=${N8N_INSTANCE_OWNER_PASSWORD_HASH:-}
+      - N8N_INSTANCE_OWNER_FIRST_NAME=${N8N_INSTANCE_OWNER_FIRST_NAME:-Admin}
+      - N8N_INSTANCE_OWNER_LAST_NAME=${N8N_INSTANCE_OWNER_LAST_NAME:-User}
       - GENERIC_TIMEZONE=UTC
     volumes:
       - n8n_data:/home/node/.n8n

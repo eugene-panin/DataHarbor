@@ -7,6 +7,7 @@ import subprocess
 
 import typer
 
+from apps.cli.env_files import ensure_compose_profile_env
 from apps.cli.paths import PROJECT_ROOT
 
 
@@ -158,6 +159,11 @@ def up(
         if env == "compose":
             cmd = ["docker", "compose"]
             if with_n8n:
+                from pathlib import Path
+
+                note = ensure_compose_profile_env(Path(PROJECT_ROOT), "n8n")
+                if note:
+                    print(f"📎 {note}")
                 cmd.extend(["--profile", "n8n"])
             cmd.extend(["up", "-d"])
             subprocess.run(cmd, check=True)

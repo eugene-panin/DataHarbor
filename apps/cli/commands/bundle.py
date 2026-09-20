@@ -5,6 +5,7 @@ import base64
 import logging
 import os
 import subprocess
+from pathlib import Path
 
 import typer
 
@@ -131,7 +132,7 @@ def doctor_bundle_cmd(
         help="Bundle name (default: diagnose all installed bundles)",
     ),
 ) -> None:
-    """Diagnose engines, python deps, extractors, and Dagster entrypoint."""
+    """Diagnose engines, python deps, env vars, extractors, and Dagster entrypoint."""
     from apps.bundle.doctor import doctor_all_bundles, doctor_bundle, format_doctor_report
 
     print("\n🩺 DATAHARBOR BUNDLE DOCTOR")
@@ -237,6 +238,16 @@ def install_bundle(
     for item in dest.get("extractors") or []:
         src = f" <- {item['source']}" if item.get("source") else ""
         print(f"   🔌 extractor [{item['status']}]: {item['name']}{src}")
+    from apps.bundle.env_requirements import hint_for_bundle_path
+
+    hint = hint_for_bundle_path(str(dest.get("installed_path") or ""))
+    if hint:
+        print(hint)
+    from apps.cli.env_files import ensure_bundle_env
+
+    note = ensure_bundle_env(Path(PROJECT_ROOT), Path(dest.get("installed_path") or "").name)
+    if note:
+        print(note)
     _refresh_dagster_workspace()
     print()
 

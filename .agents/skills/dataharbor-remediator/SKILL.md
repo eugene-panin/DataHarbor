@@ -1,6 +1,6 @@
 ---
 name: dataharbor-remediator
-description: Diagnose and repair DataHarbor scrapers/extractors using real HAP CLI plus harbor validate/health. Trigger when scrapers break, return zero rows, or when asked to repair a DataHarbor bundle.
+description: "Use when a DataHarbor scraper or extractor is broken and must be repaired (RU: почини, сломался скрейпер, ZERO_ROWS, 403, 429, selector drift). Prefer summary first; then diagnose. Not for new bundle design or routine health checks."
 ---
 
 # DataHarbor Scraper Remediation
@@ -11,13 +11,16 @@ Authoritative companion: `AGENTS.md` §3 (failure modes) and §5 (validate + dua
 
 Do **not** auto-commit. Do **not** treat import-only HAP test as a scrape success.
 
+Duty/operate sessions start with `harbor agent-protocol summary` (`dataharbor-bundle-operator`). Open this skill only when `action` is `REMEDIATE` or the user asked to repair.
+
 ---
 
 ## What HAP actually returns
 
 | Command | Real behavior |
 |---------|----------------|
-| `harbor agent-protocol status` | JSON array from `ScraperHealthChecker`. Per bundle: `HEALTHY` \| `DEGRADED` \| `CRITICAL`. **Not** `ZERO_ROWS`. Anomalies live in `issues` and metrics (`anomaly_runs` via DB). |
+| `harbor agent-protocol summary` / `summary <name>` | Compact operator digest. No source. `action`: OK/WATCH/REMEDIATE/STOP. Read-only (no alerts). |
+| `harbor agent-protocol status` | JSON array from `ScraperHealthChecker`. Per bundle: `HEALTHY` \| `DEGRADED` \| `CRITICAL`. **Not** `ZERO_ROWS`. Emits alerts. Prefer `summary` for duty loops. |
 | `harbor agent-protocol diagnose <name>` | Last `scraper_execution_logs` row + first 600 chars of `scraper.py`. Fields: `protocol`, `bundle_exists`, `scraper_exists`, `declared_extractors`, `status`, `error_message`, `last_log` (`status`, `items_scraped`, `http_*_count`, `error_message`, `created_at`), `code_snippet`, `missing_fields`, `instruction`. **No** `failing_selectors`. **No** `html_sample`. |
 | `harbor agent-protocol patch <name> --code-file <file>` | `ast.parse` then **overwrite entire** `bundles/<name>/scraper.py`. Will not patch extractors. Prefer surgical file edits in Cursor; use HAP patch only when you intend a full-file replace. |
 | `harbor agent-protocol test <name>` | Import `bundles.<name>.scraper` only → `"status": "IMPORT_OK"`, `"live_scrape": false`. Exit 0. **Not a scrape proof.** |
@@ -46,9 +49,10 @@ harbor agent-protocol diagnose <bundle_name>
 
 Then read (do not skip):
 
+0. `bundles/<name>/AGENT.md` if present — domain playbook (catalog, roles, env). Not a substitute for diagnose.
 1. `bundles/<name>/manifest.json` — extractors, python deps, observability.
 2. `bundles/<name>/scraper.py` and `fetch.py` if present.
-3. Declared `extractors/<id>/extractor.py` (selector drift usually lives here).
+3. Declared `extractors/<id>/extractor.py` (selector drift usually lives here). Read `extractors/<id>/AGENT.md` if present.
 4. Last log fields from diagnose (`error_message`, `http_403_count`, `http_429_count`).
 
 HAP does not store HTML. For Mode A, fetch one target page (or a saved SeaweedFS dump) yourself and inspect markup.
@@ -105,6 +109,16 @@ PYTHONPATH=. .venv/bin/python bundles/<bundle_name>/scraper.py
 - Do not `git commit` unless the user asked.
 - If rights, personal data, or ToS block fetching the target, stop and report `DISCOVERY_BLOCKED` / `REVIEW_REQUIRED` instead of patching around the policy.
 
+
+---
+
+---
+
+---
+
+---
+
+---
 
 ---
 

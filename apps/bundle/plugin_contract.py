@@ -134,6 +134,13 @@ def validate_manifest_contract(manifest: dict[str, Any]) -> list[str]:
             isinstance(py_deps, list) and all(isinstance(x, str) and x.strip() for x in py_deps)
         ):
             errors.append("requirements.python must be a list of non-empty strings")
+        if "env" in reqs:
+            from apps.bundle.env_requirements import EnvRequirementError, parse_env_requirements
+
+            try:
+                parse_env_requirements(reqs.get("env"))
+            except EnvRequirementError as e:
+                errors.append(str(e))
 
     return errors
 

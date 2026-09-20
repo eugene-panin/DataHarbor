@@ -10,11 +10,11 @@ datasources:
     type: postgres
     access: proxy
     url: postgres:5432
-    user: dataharbor
+    user: ${POSTGRES_USER}
     secureJsonData:
-      password: dataharbor
+      password: ${POSTGRES_PASSWORD}
     jsonData:
-      database: dataharbor
+      database: ${POSTGRES_DB}
       sslmode: disable
       postgresVersion: 1600
     isDefault: true

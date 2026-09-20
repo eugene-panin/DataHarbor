@@ -2,6 +2,24 @@
 
 This document serves as the authoritative context and architectural specification for AI Agents (Gemini, Claude, Antigravity, GPT-4) performing autonomous diagnosis, code generation, and auto-remediation across DataHarbor.
 
+## 0. Skill routing (mandatory, agent-agnostic)
+
+This section is the **canonical router for every agent** (Cursor, Codex, Claude Code, Gemini, Antigravity, etc.). Do not depend on `.cursor/rules` — that file is a Cursor-only projection of this table.
+
+Load **one** skill from `.agents/skills/<name>/SKILL.md` and follow it. Do not mix designer + operator in the same pass.
+
+| User asked to… | Skill | Do first |
+|---|---|---|
+| Create, design schema, or change bundle/extractor code | `dataharbor-bundle-designer` | Discovery. No `harbor bundle new` until approved. |
+| Operate, monitor, health, SLA, results, duty | `dataharbor-bundle-operator` | `harbor agent-protocol summary` — no source files. |
+| Repair a broken scraper / ZERO_ROWS / HTTP 403–429 | `dataharbor-remediator` | `summary` then `diagnose`; surgical patch. |
+
+Vague «бандл» → one clarifying question (develop / operate / repair). Operator `action=REMEDIATE` → remediator. Never scaffold from operator/remediator.
+
+Register skills into each product's user dir with `harbor skill install` (does not replace this file).
+
+Plugin playbooks are **not** extra skills. If `bundles/<name>/AGENT.md` or `extractors/<id>/AGENT.md` exists, the active skill reads it when that plugin is in scope. Do not copy those files into `~/.claude/skills`.
+
 ---
 
 ## 🏛️ 1. Platform Architecture Overview
@@ -19,15 +37,18 @@ DataHarbor is an open-core data platform and multi-modal AI processing engine.
 8. **Optional ML (`apps/ml/`, extra `ml`):** Whisper / EasyOCR / embeddings / HDBSCAN — install with `uv sync --extra ml`. Not required for Core.
 9. **Backup CLI (`harbor backup`):** Master backup/restore; stays in Core (uses S3 + DB helpers, no heavy ML deps).
 
+**Env follows the running stack.** `.env` / `.env.example` list only default Compose services. Optional profiles do not get their own env files: `harbor up --compose --with-n8n` appends n8n keys to `.env` once. Alerts, proxies, remediator, and bundle `requirements.env` are also added to that same `.env` only when you use them.
+
 ### Bundles Architecture (`bundles/`):
 Modular, self-contained business domains (a task or a pipeline of tasks). Each bundle resides in `bundles/<bundle_name>/` and contains:
-* **`manifest.json` (Required):** Bundle passport — `name`, `version`, `description`, optional `engines.dataharbor` (PEP 440 specifier), `requirements.extractors` / `requirements.python`, `entrypoints.dagster` (e.g. `assets:defs`; `entrypoints.celery` must be `null`), observability thresholds.
+* **`manifest.json` (Required):** Bundle passport — `name`, `version`, `description`, optional `engines.dataharbor` (PEP 440 specifier), `requirements.extractors` / `requirements.python` / `requirements.env`, `entrypoints.dagster` (e.g. `assets:defs`; `entrypoints.celery` must be `null`), observability thresholds.
   Declare required resource extractors under `requirements.extractors` as:
   * local id: `"demo_site"`
   * private/public git URL: `"git@github.com:acme/dh-extractor-example.git"`
   * explicit object: `{"name": "example", "source": "https://github.com/acme/dh-extractor-example.git"}`
   Bundle itself is installed via CLI: `harbor bundle install <bundle-git-url>` — platform then auto-pulls declared extractor sources into `extractors/`.
-* **`assets.py` (Recommended):** Export `defs = Definitions(...)` (assets, jobs, schedules, checks). Core loads each bundle as a **separate Dagster code location** (`harbor workspace refresh` → `apps/dagster_app/workspace.yaml`). Invalid bundles are skipped at workspace generation; a failing location does not take down others.
+  Declare extra env vars under `requirements.env` as `"FOO_API_KEY"` or `{"name":"FOO_API_KEY","required":true,"description":"..."}`. Secrets stay in repo-root `.env` (never in the bundle git). `harbor bundle install` prints the list; `harbor bundle doctor` fails if a required name is unset. Missing keys do **not** fail `harbor bundle validate` (install would otherwise roll back).
+* **`AGENT.md` (Recommended):** Short domain playbook for agents (what to ingest, operate, env). Not a platform skill — do not `harbor skill install` it. Designer/operator/remediator read it when this bundle is in scope.
 * **`scraper.py` / `fetch.py` (Optional):** Fetch + orchestration owned by the bundle author. Core provides thin `HttpFetcher` only.
 * **`db.py` (Optional):** PostgreSQL tables/views & ClickHouse `MergeTree` schema initialization.
 * **`exporter.py` (Optional):** Presentation View Layer — interactive HTML/JS domain dossier report generator combining PostgreSQL relational entities, ClickHouse OLAP telemetry, and SeaweedFS media assets (`harbor bundle export <bundle_name>` / `harbor bundle view <bundle_name>`).
@@ -38,6 +59,7 @@ Modular, self-contained business domains (a task or a pipeline of tasks). Each b
 Separately distributed parse adapters for a single content source. Reused by multiple bundles. Users keep custom extractors in private repos; the platform clones them on demand. Each extractor resides in `extractors/<extractor_id>/` and contains:
 * **`manifest.json` (Required):** Passport with `name`, `version`, `description`, `domains`, `entrypoint` (`extractor:parse`).
 * **`extractor.py` (Required):** `parse(html, source_url) -> list[dict]` and optional `generate_page_urls(base_url, max_pages)`. Extractors MUST NOT perform HTTP, proxy rotation, or browser control — only parse already-fetched content.
+* **`AGENT.md` (Recommended):** Short parse playbook for agents. Not a platform skill.
 * **`tests/` (Recommended):** Plugin tests co-located with the extractor. Created by `harbor extractor new`. Open-core CI runs only `extractors/demo_site/tests/`; private extractors run `pytest extractors/<id>/tests` in their own repo.
 
 The open-core tree ships **`demo_site`** as a contract example. Domain-specific extractors and business bundles are installed from private/public git remotes.

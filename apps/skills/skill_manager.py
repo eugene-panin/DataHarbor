@@ -9,12 +9,25 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LOCAL_SKILLS_DIR = os.path.join(PROJECT_ROOT, ".agents", "skills")
 
-# Target Global Skill Directories (Codex User Skills & Gemini/Antigravity User Config)
-# Respects strict separation: ~/.codex/skills/ for Codex user skills without duplicating in .system or global .agents
-GLOBAL_SKILL_TARGETS = [
-    os.path.expanduser("~/.codex/skills"),
-    os.path.expanduser("~/.gemini/config/skills")
-]
+
+def default_global_skill_targets() -> list[str]:
+    """User-level skill dirs for common agents. Missing parents are created on install.
+
+    Repo-canonical skills stay in ``.agents/skills``. This list is a fan-out, not a
+    second source of truth.
+    """
+    home = os.path.expanduser("~")
+    return [
+        os.path.join(home, ".codex", "skills"),
+        os.path.join(home, ".claude", "skills"),
+        os.path.join(home, ".gemini", "config", "skills"),
+        os.path.join(home, ".gemini", "skills"),
+        os.path.join(home, ".agents", "skills"),
+    ]
+
+
+# Back-compat alias used by tests / older imports.
+GLOBAL_SKILL_TARGETS = default_global_skill_targets()
 
 class SkillManagerEngine:
     """Manages skill registration and injects active runtime environment context (Kubernetes vs Docker Compose vs Local Host)."""
@@ -114,8 +127,9 @@ Detected bindings this install: postgres `{env_info['postgres_host']}`, ClickHou
         env_block = self.generate_environment_context_block(env_info)
 
         installed_skills = []
+        targets = default_global_skill_targets()
         os.makedirs(LOCAL_SKILLS_DIR, exist_ok=True)
-        for target_dir in GLOBAL_SKILL_TARGETS:
+        for target_dir in targets:
             os.makedirs(target_dir, exist_ok=True)
 
         for skill_folder in os.listdir(LOCAL_SKILLS_DIR):
@@ -138,8 +152,8 @@ Detected bindings this install: postgres `{env_info['postgres_host']}`, ClickHou
                 with open(skill_md_path, "w", encoding="utf-8") as f:
                     f.write(updated_content)
 
-                # Copy to all global user skill directories for Codex, Antigravity, Claude, and Gemini
-                for target_dir in GLOBAL_SKILL_TARGETS:
+                # Fan-out to user skill dirs (Codex, Claude, Gemini). Source remains .agents/skills.
+                for target_dir in targets:
                     dest_skill_dir = os.path.join(target_dir, skill_folder)
                     os.makedirs(dest_skill_dir, exist_ok=True)
                     shutil.copy2(skill_md_path, os.path.join(dest_skill_dir, "SKILL.md"))
@@ -150,7 +164,8 @@ Detected bindings this install: postgres `{env_info['postgres_host']}`, ClickHou
         return {
             "status": "SUCCESS",
             "environment": env_info,
-            "installed_skills": installed_skills
+            "installed_skills": installed_skills,
+            "targets": targets,
         }
 
     def list_installed_skills(self) -> list[dict[str, Any]]:

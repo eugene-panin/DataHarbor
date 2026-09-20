@@ -119,8 +119,12 @@ class ScraperHealthChecker:
         except Exception as e:
             logger.debug(f"Could not audit/cancel orphaned Dagster runs: {e}")
 
-    def check_all_scrapers_health(self) -> list[dict[str, Any]]:
-        """Audits all scrapers using connection pool, Dagster process stdout monitoring, and per-bundle thresholds."""
+    def check_all_scrapers_health(self, *, emit_alerts: bool = True) -> list[dict[str, Any]]:
+        """Audits all scrapers using connection pool, Dagster stdout, and per-bundle thresholds.
+
+        ``emit_alerts=False`` is read-only (operator ``summary``): no notifier, no extra
+        FAILED rows written to ``scraper_execution_logs``.
+        """
         self.cleanup_orphaned_dagster_runs()
         rows = []
         try:
@@ -161,15 +165,14 @@ class ScraperHealthChecker:
                 status = "DEGRADED"
                 top_err = stdout_errors_by_bundle[bundle_name][0]
                 issues.append(f"Dagster process STDOUT error detected: '{top_err}'")
-                
-                # Record stdout telemetry error in database for AI Remediation tracking
-                record_scraper_execution(
-                    bundle_name=bundle_name,
-                    status="FAILED",
-                    items_scraped=0,
-                    error_message=f"STDOUT: {top_err}"
-                )
-                send_scraper_alert(bundle_name, "DAGSTER_STDOUT_ERROR", issues[-1])
+                if emit_alerts:
+                    record_scraper_execution(
+                        bundle_name=bundle_name,
+                        status="FAILED",
+                        items_scraped=0,
+                        error_message=f"STDOUT: {top_err}",
+                    )
+                    send_scraper_alert(bundle_name, "DAGSTER_STDOUT_ERROR", issues[-1])
 
             # Check 2: Zero-Row / Anomaly Rate
             if anomaly_runs > 0 and (anomaly_runs / max(1, total_runs)) >= anomaly_threshold_ratio:
@@ -177,7 +180,8 @@ class ScraperHealthChecker:
                 issues.append(
                     f"High anomaly rate ({anomaly_runs}/{total_runs} runs returned 0 items, threshold: {int(anomaly_threshold_ratio*100)}%). Target HTML selector changed?"
                 )
-                send_scraper_alert(bundle_name, "ZERO_ROWS_ANOMALY", issues[-1])
+                if emit_alerts:
+                    send_scraper_alert(bundle_name, "ZERO_ROWS_ANOMALY", issues[-1])
 
             # Check 3: Staleness SLA
             if last_success:
@@ -188,7 +192,8 @@ class ScraperHealthChecker:
                     issues.append(
                         f"Staleness SLA breached! Last successful run was {hours_since_success:.1f} hours ago (SLA: {sla_hours}h)."
                     )
-                    send_scraper_alert(bundle_name, "SLA_STALENESS_EXCEEDED", issues[-1])
+                    if emit_alerts:
+                        send_scraper_alert(bundle_name, "SLA_STALENESS_EXCEEDED", issues[-1])
 
             health_results.append({
                 "bundle_name": bundle_name,
@@ -204,6 +209,122 @@ class ScraperHealthChecker:
             })
 
         return health_results
+
+    def _last_execution_log(self, bundle_name: str) -> dict[str, Any] | None:
+        try:
+            with get_db_cursor(commit=False) as cursor:
+                cursor.execute(
+                    """
+                    SELECT status, items_scraped, http_403_count, http_429_count,
+                           error_message, created_at
+                    FROM scraper_execution_logs
+                    WHERE bundle_name = %s
+                    ORDER BY created_at DESC
+                    LIMIT 1;
+                    """,
+                    (bundle_name,),
+                )
+                row = cursor.fetchone()
+        except Exception as e:
+            logger.debug("last execution log unavailable for '%s': %s", bundle_name, e)
+            return None
+        if not row:
+            return None
+        payload = dict(row)
+        created = payload.get("created_at")
+        if hasattr(created, "isoformat"):
+            payload["created_at"] = created.isoformat()
+        err = payload.get("error_message")
+        if isinstance(err, str) and len(err) > 140:
+            payload["error_message"] = err[:140]
+        return payload
+
+    @staticmethod
+    def _action_for(status: str) -> str:
+        if status == "CRITICAL":
+            return "REMEDIATE"
+        if status == "DEGRADED":
+            return "WATCH"
+        if status == "HEALTHY":
+            return "OK"
+        return "WATCH"
+
+    def summarize_bundle(self, bundle_name: str) -> dict[str, Any]:
+        """Compact one-bundle digest for operator sessions (no source code)."""
+        exists = os.path.isdir(os.path.join(BUNDLES_DIR, bundle_name))
+        report = self.check_all_scrapers_health(emit_alerts=False)
+        row = next((r for r in report if r["bundle_name"] == bundle_name), None)
+        if row is None:
+            return {
+                "protocol": "HAP/1.0",
+                "kind": "summary",
+                "bundle_name": bundle_name,
+                "bundle_exists": exists,
+                "status": "UNKNOWN",
+                "action": "STOP" if not exists else "WATCH",
+                "error": (
+                    f"Bundle '{bundle_name}' not found under bundles/."
+                    if not exists
+                    else "No health row yet (no runs)."
+                ),
+            }
+        issues = [str(i)[:140] for i in (row.get("issues") or [])[:2]]
+        status = row["status"]
+        action = self._action_for(status)
+        if issues and action == "OK":
+            action = "WATCH"
+        next_cmd = None
+        if action == "REMEDIATE":
+            next_cmd = f"harbor agent-protocol diagnose {bundle_name}"
+        return {
+            "protocol": "HAP/1.0",
+            "kind": "summary",
+            "bundle_name": bundle_name,
+            "bundle_exists": exists,
+            "status": status,
+            "action": action,
+            "runs_24h": row.get("total_runs_24h") or 0,
+            "success_24h": row.get("success_runs_24h") or 0,
+            "items_24h": row.get("items_scraped_24h") or 0,
+            "last_success": row.get("last_success_timestamp") or "Never",
+            "sla_hours": row.get("configured_sla_hours"),
+            "issues": issues,
+            "last_log": self._last_execution_log(bundle_name),
+            "next": next_cmd,
+        }
+
+    def summarize_all(self) -> dict[str, Any]:
+        """Fleet digest: one short row per bundle, no code, no last_log."""
+        report = self.check_all_scrapers_health(emit_alerts=False)
+        bundles = []
+        worst = "OK"
+        for row in report:
+            action = self._action_for(row["status"])
+            issue_n = len(row.get("issues") or [])
+            if issue_n and action == "OK":
+                action = "WATCH"
+            if action == "REMEDIATE":
+                worst = "REMEDIATE"
+            elif action == "WATCH" and worst == "OK":
+                worst = "WATCH"
+            bundles.append(
+                {
+                    "name": row["bundle_name"],
+                    "status": row["status"],
+                    "action": action,
+                    "items_24h": row.get("items_scraped_24h") or 0,
+                    "runs_24h": row.get("total_runs_24h") or 0,
+                    "issues_n": issue_n,
+                }
+            )
+        return {
+            "protocol": "HAP/1.0",
+            "kind": "summary_all",
+            "action": worst,
+            "count": len(bundles),
+            "bundles": bundles,
+            "next": "harbor agent-protocol summary <name>" if worst != "OK" else None,
+        }
 
 if __name__ == "__main__":
     checker = ScraperHealthChecker()

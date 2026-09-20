@@ -119,6 +119,24 @@ def _check_python_deps(manifest: dict[str, Any]) -> list[CheckResult]:
     return results
 
 
+def _check_env_vars(manifest: dict[str, Any]) -> list[CheckResult]:
+    raw = (manifest.get("requirements") or {}).get("env")
+    if not raw:
+        return [CheckResult("requirements.env", "skip", "none declared")]
+    from apps.bundle.env_requirements import EnvRequirementError, check_env_requirements, parse_env_requirements
+
+    try:
+        specs = parse_env_requirements(raw)
+    except EnvRequirementError as e:
+        return [CheckResult("requirements.env", "fail", str(e))]
+    if not specs:
+        return [CheckResult("requirements.env", "skip", "none declared")]
+    return [
+        CheckResult("requirements.env", row["status"], row["detail"])
+        for row in check_env_requirements(specs)
+    ]
+
+
 def _check_extractors(manifest: dict[str, Any], bundle_name: str) -> list[CheckResult]:
     raw = (manifest.get("requirements") or {}).get("extractors")
     if not raw:
@@ -269,6 +287,7 @@ def doctor_bundle(
             )
 
     report.checks.extend(_check_python_deps(manifest))
+    report.checks.extend(_check_env_vars(manifest))
     report.checks.extend(_check_extractors(manifest, bundle_name))
     report.checks.extend(_check_dagster_entrypoint(bundle_name, path, manifest))
 

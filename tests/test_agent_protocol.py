@@ -57,6 +57,35 @@ def test_verification_import_ok_on_default_scaffold():
                 del sys.modules[key]
 
 
+def test_operator_summary_missing_bundle_is_stop():
+    from apps.observability.health_checker import ScraperHealthChecker
+
+    payload = ScraperHealthChecker().summarize_bundle("zz_no_such_bundle")
+    assert payload["kind"] == "summary"
+    assert payload["bundle_exists"] is False
+    assert payload["action"] == "STOP"
+    assert "code_snippet" not in payload
+    assert "html_sample" not in payload
+    json.dumps(payload, separators=(",", ":"), default=str)
+
+
+def test_operator_summary_all_has_no_source_fields():
+    from apps.observability.health_checker import ScraperHealthChecker
+
+    payload = ScraperHealthChecker().summarize_all()
+    assert payload["kind"] == "summary_all"
+    assert "code_snippet" not in payload
+    for row in payload["bundles"]:
+        assert set(row) <= {
+            "name",
+            "status",
+            "action",
+            "items_24h",
+            "runs_24h",
+            "issues_n",
+        }
+
+
 def test_skill_manager_env_block_mentions_host_ports():
     from apps.skills.skill_manager import SkillManagerEngine
 
@@ -74,3 +103,12 @@ def test_skill_manager_env_block_mentions_host_ports():
     assert "54320" in block
     assert "8334" in block
     assert "dataharbor_dagster" in block
+
+
+def test_skill_install_targets_cover_major_agents():
+    from apps.skills.skill_manager import default_global_skill_targets
+
+    joined = " ".join(default_global_skill_targets())
+    assert ".codex/skills" in joined
+    assert ".claude/skills" in joined
+    assert ".gemini" in joined

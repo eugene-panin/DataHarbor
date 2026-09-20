@@ -14,10 +14,13 @@ def get_connection_params():
     """Resolves database connection parameters based on environment."""
     is_docker = os.path.exists("/.dockerenv")
     host = os.getenv("POSTGRES_HOST", "127.0.0.1")
-    if is_docker and ("localhost" in host or "127.0.0.1" in host):
-        host = "postgres"
-
     port = int(os.getenv("POSTGRES_PORT", 5432))
+    if is_docker:
+        if "localhost" in host or "127.0.0.1" in host:
+            host = "postgres"
+        # Compose Postgres is 5432 in-network; repo .env often has the host publish port.
+        if host == "postgres":
+            port = 5432
     dbname = os.getenv("POSTGRES_DB", "postgres")
     user = os.getenv("POSTGRES_USER", "dataharbor")
     password = os.getenv("POSTGRES_PASSWORD", "")

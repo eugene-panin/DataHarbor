@@ -10,6 +10,8 @@ from apps.cli.paths import PROJECT_ROOT
 
 app = typer.Typer(help="Harbor Agent Protocol (HAP v1.0) for external LLM agents", no_args_is_help=True)
 
+_COMPACT = {"separators": (",", ":"), "default": str}
+
 
 @app.command("status")
 def status() -> None:
@@ -18,6 +20,27 @@ def status() -> None:
 
     report = ScraperHealthChecker().check_all_scrapers_health()
     print(json.dumps(report, indent=2, default=str))
+
+
+@app.command("summary")
+def summary(
+    bundle_name: str | None = typer.Argument(
+        None,
+        help="Bundle id. Omit for a fleet digest of all installed bundles.",
+    ),
+) -> None:
+    """Compact operator digest: counts, SLA, issues, last log. No source code."""
+    from apps.observability.health_checker import ScraperHealthChecker
+
+    checker = ScraperHealthChecker()
+    if bundle_name:
+        payload = checker.summarize_bundle(bundle_name)
+    else:
+        payload = checker.summarize_all()
+    print(json.dumps(payload, **_COMPACT))
+    action = payload.get("action")
+    if action in {"STOP", "REMEDIATE"} or payload.get("status") == "UNKNOWN":
+        raise typer.Exit(code=1)
 
 
 @app.command("diagnose")

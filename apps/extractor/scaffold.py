@@ -149,6 +149,17 @@ def generate_page_urls(base_url: str, max_pages: int = 10) -> List[str]:
     return urls
 '''
     _write(os.path.join(root, "extractor.py"), code)
+    _write(
+        os.path.join(root, "AGENT.md"),
+        f"""# {extractor_name} — agent playbook
+
+Parse-only. No HTTP, proxy, or browser.
+
+- Contract: `parse(html, source_url) -> list[dict]` with `source_url` on each record
+- Patch selectors here, not in the calling bundle, when markup drifts
+- Used by bundles that list `{extractor_name}` in `requirements.extractors`
+""",
+    )
     test_files = _write_plugin_tests(root, extractor_name)
 
     is_valid, errors = ExtractorValidator(root).validate()
@@ -168,6 +179,6 @@ def generate_page_urls(base_url: str, max_pages: int = 10) -> List[str]:
         "status": "success",
         "extractor_name": extractor_name,
         "path": root,
-        "files": ["manifest.json", "__init__.py", "extractor.py", *test_files],
+        "files": ["manifest.json", "__init__.py", "extractor.py", "AGENT.md", *test_files],
         "message": f"Extractor scaffold '{extractor_name}' created at {root}",
     }
