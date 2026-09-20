@@ -69,14 +69,22 @@ analysis/
 !README.tr.md
 !AGENTS.md
 !.agents/**/*.md
+!CLAUDE.md
+!GEMINI.md
 !extractors/demo_site/AGENT.md
 !bundles/demo/AGENT.md
+!CONTRIBUTING.md
+!CODE_OF_CONDUCT.md
+!SECURITY.md
+!.github/PULL_REQUEST_TEMPLATE.md
+!.github/ISSUE_TEMPLATE/*.md
 
 # IDE / OS / local tooling
 .idea/
 .vscode/
 .cursor/
 .cursorindexingignore
+.kilo/
 .specstory/
 *.swp
 *.swo

@@ -1,11 +1,32 @@
 [project]
 name = "dataharbor"
 version = "1.0.0"
-description = "DataHarbor Core Platform CLI & Orchestration Engine"
-authors = [{ name = "Eugene Panin", email = "admin@dataharbor.local" }]
+description = "Modular open-core data platform with autonomous scraper self-healing (ClickHouse, Qdrant, Dagster, AI-driven remediation)"
+authors = [{ name = "Eugene Panin" }]
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
+keywords = [
+    "web-scraping",
+    "data-platform",
+    "etl",
+    "dagster",
+    "clickhouse",
+    "self-healing",
+    "ai-agents",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: System :: Distributed Computing",
+]
 dependencies = [
     "python-dotenv>=1.0.1",
     "pydantic>=2.7.0",
@@ -21,6 +42,12 @@ dependencies = [
     "typer>=0.12.0",
     "rich>=13.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/eugene-panin/DataHarbor"
+Repository = "https://github.com/eugene-panin/DataHarbor"
+Issues = "https://github.com/eugene-panin/DataHarbor/issues"
+Changelog = "https://github.com/eugene-panin/DataHarbor/commits/main"
 
 [project.scripts]
 harbor = "apps.cli.main:app"

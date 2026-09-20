@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an improvement to the open-core platform (apps/, CLI, bundle/extractor contract, docs).
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This tracker is for the open-core platform. If your request is
+        really about a specific bundle or extractor's scraping logic
+        (business-specific, private by design), it likely belongs in that
+        bundle's own repo instead — see [AGENTS.md](../../AGENTS.md).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do that the platform doesn't support today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Sketch the CLI command, manifest field, or behavior you have in mind, if you have one.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?

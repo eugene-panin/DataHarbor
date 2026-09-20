@@ -171,6 +171,18 @@ Agents (**Codex**, **Antigravity**, **Claude Code**, **Gemini CLI**) can follow 
 
 ---
 
+## 🤝 Contributing
+
+Contributions to the open-core platform are welcome — see
+**[CONTRIBUTING.md](CONTRIBUTING.md)** for dev setup, the test/lint gates
+CI runs, and PR guidelines. Please also read the
+**[Code of Conduct](CODE_OF_CONDUCT.md)**.
+
+Found a security issue? Please report it privately — see
+**[SECURITY.md](SECURITY.md)**, don't open a public issue.
+
+---
+
 ## 📄 License
 
 MIT License © DataHarbor Core Team
