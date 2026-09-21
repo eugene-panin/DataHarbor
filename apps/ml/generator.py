@@ -4,7 +4,16 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 def generate_winning_creative_script(cluster_id: int, cluster_items: list[dict[str, Any]]) -> dict[str, Any]:
-    """Analyzes a winning cluster of ad creatives and synthesizes a new ad script + AI visual prompt."""
+    """Fills a fixed ad-script template with data pulled from a winning cluster.
+
+    EXPERIMENTAL / template-based, not LLM-driven: only the hook line,
+    on-screen text and lead brand name are taken from `cluster_items` —
+    the rest of "generated_script" (problem/demo beat, CTA copy) is the
+    same hardcoded boilerplate on every call regardless of cluster
+    content. Currently unwired (no bundle or CLI command calls this) —
+    treat it as a starting point for a real LLM-backed rewrite, not a
+    ready analysis feature, before surfacing it to users.
+    """
     logger.info(f"Generating winning creative script for Cluster #{cluster_id} ({len(cluster_items)} items)...")
     
     if not cluster_items:

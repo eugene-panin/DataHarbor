@@ -2,6 +2,22 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+_MODEL_CACHE: dict[tuple[str, str], object] = {}
+
+
+def _get_sentence_transformer(model_name: str, device: str):
+    """Cache the loaded model per (name, device) — building a fresh
+    SentenceTransformer on every call reloads it from disk (or re-downloads
+    it) each time, making embedding more than a handful of items in a run
+    prohibitively slow."""
+    key = (model_name, device)
+    if key not in _MODEL_CACHE:
+        from sentence_transformers import SentenceTransformer
+
+        _MODEL_CACHE[key] = SentenceTransformer(model_name, device=device)
+    return _MODEL_CACHE[key]
+
+
 def get_best_torch_device() -> str:
     """Auto-detects best available compute device: Apple Metal MPS -> NVIDIA CUDA -> CPU."""
     try:
@@ -16,26 +32,35 @@ def get_best_torch_device() -> str:
         logger.debug(f"PyTorch device resolution fallback: {e}")
     return "cpu"
 
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+
+
 def generate_multimodal_embedding(text: str, media_type: str = "text") -> list[float]:
-    """Generates a 512-dimensional vector embedding with hardware acceleration (MPS/CUDA/CPU).
+    """Generates a vector embedding with hardware acceleration (MPS/CUDA/CPU).
+
+    Returns the embedding model's own native dimensionality (384 for the
+    default "all-MiniLM-L6-v2") — it used to be silently zero-padded/
+    truncated to a hardcoded 512, which is not a real 512-dimensional
+    embedding: appending zeros doesn't add information, and truncating
+    would drop real signal, so any similarity search over these vectors
+    was comparing corrupted representations without any indication why
+    results were degraded. Store these in a Qdrant collection configured
+    for this model's actual output size (QDRANT_VECTOR_SIZE), not a fixed
+    512.
 
     Requires optional extra: ``uv sync --extra ml``.
     """
     from apps.ml import require_ml
 
     require_ml("sentence_transformers")
-    logger.info(f"Generating 512d embedding vector for type '{media_type}' (len={len(text)})")
-
-    from sentence_transformers import SentenceTransformer
 
     device = get_best_torch_device()
-    logger.info(f"Running SentenceTransformer on hardware device: '{device}'")
-    model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
-    vector = model.encode(text).tolist()
-
-    if len(vector) < 512:
-        vector.extend([0.0] * (512 - len(vector)))
-    return vector[:512]
+    logger.info(
+        f"Generating embedding for type '{media_type}' (len={len(text)}) "
+        f"with '{EMBEDDING_MODEL_NAME}' on device '{device}'"
+    )
+    model = _get_sentence_transformer(EMBEDDING_MODEL_NAME, device)
+    return model.encode(text).tolist()
 
 if __name__ == "__main__":
     vec = generate_multimodal_embedding("Test Apple Silicon Metal MPS acceleration")
