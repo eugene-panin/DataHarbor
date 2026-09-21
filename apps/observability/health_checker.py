@@ -59,8 +59,41 @@ class ScraperHealthChecker:
 
         return sla_hours, anomaly_ratio
 
-    def scan_dagster_stdout_logs(self) -> dict[str, list[str]]:
-        """Scans Dagster process stdout/stderr log files for active errors and matches them to bundles."""
+    @staticmethod
+    def _stdout_scan_state_path(dagster_home: str) -> str:
+        return os.path.join(dagster_home, ".dataharbor_stdout_scan_state.json")
+
+    @staticmethod
+    def _load_stdout_scan_state(path: str) -> dict[str, int]:
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _save_stdout_scan_state(path: str, state: dict[str, int]) -> None:
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(state, f)
+        except Exception as e:
+            logger.debug(f"Could not persist stdout scan state to '{path}': {e}")
+
+    def scan_dagster_stdout_logs(self, *, advance_cursor: bool = True) -> dict[str, list[str]]:
+        """Scans Dagster process stdout/stderr log files for errors NEW since
+        the last scan — not the same historical tail every time.
+
+        Without a persisted cursor, one old error sitting near the end of a
+        slow-growing log file gets re-read (and, with emit_alerts=True,
+        re-recorded as a fresh FAILED row and re-sent to Telegram/Slack) on
+        every single health check — turning a single incident into an
+        ever-growing pile of duplicate failures and repeat notifications.
+
+        ``advance_cursor=False`` (the read-only operator summary path) shows
+        the same "what's new" window without consuming it, so a later real
+        check (``emit_alerts=True``) still sees and alerts on it once.
+        """
         dagster_home = os.getenv("DAGSTER_HOME", "/tmp/dagster_home")
         log_patterns = [
             f"{dagster_home}/**/*.log",
@@ -72,17 +105,34 @@ class ScraperHealthChecker:
         for pat in log_patterns:
             found_logs.extend(glob.glob(pat, recursive=True))
 
+        state_path = self._stdout_scan_state_path(dagster_home)
+        state = self._load_stdout_scan_state(state_path)
+        new_state = dict(state)
+
         bundle_stdout_errors = {}
         combined_regex = re.compile("|".join(STDOUT_ERROR_PATTERNS), re.IGNORECASE)
 
         for log_file in found_logs:
             try:
-                if not os.path.isfile(log_file) or os.path.getsize(log_file) == 0:
+                if not os.path.isfile(log_file):
                     continue
-                
-                with open(log_file, encoding="utf-8", errors="ignore") as f:
-                    # Read last 300 lines of process stdout/stderr
-                    lines = f.readlines()[-300:]
+                size = os.path.getsize(log_file)
+                if size == 0:
+                    continue
+
+                last_offset = state.get(log_file, -1)
+                if last_offset < 0 or last_offset > size:
+                    # First time seeing this file, or it was rotated/truncated
+                    # since — look at recent content, not the whole history.
+                    with open(log_file, encoding="utf-8", errors="ignore") as f:
+                        lines = f.readlines()[-300:]
+                else:
+                    with open(log_file, "rb") as f:
+                        f.seek(last_offset)
+                        new_bytes = f.read()
+                    lines = new_bytes.decode("utf-8", errors="ignore").splitlines()
+
+                new_state[log_file] = size
 
                 for line in lines:
                     if combined_regex.search(line):
@@ -101,6 +151,9 @@ class ScraperHealthChecker:
                             bundle_stdout_errors[matched_bundle].append(clean_err)
             except Exception as e:
                 logger.debug(f"Could not scan log file '{log_file}': {e}")
+
+        if advance_cursor:
+            self._save_stdout_scan_state(state_path, new_state)
 
         return bundle_stdout_errors
 
@@ -141,7 +194,7 @@ class ScraperHealthChecker:
             rows = []
 
         # Scan Dagster process stdout/stderr logs
-        stdout_errors_by_bundle = self.scan_dagster_stdout_logs()
+        stdout_errors_by_bundle = self.scan_dagster_stdout_logs(advance_cursor=emit_alerts)
 
         health_results = []
         now = datetime.now(timezone.utc)

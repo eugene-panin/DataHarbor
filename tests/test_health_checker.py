@@ -1,4 +1,5 @@
-"""Tests for ScraperHealthChecker.check_all_scrapers_health status logic (F01, F02).
+"""Tests for ScraperHealthChecker.check_all_scrapers_health status logic
+(F01, F02, F19).
 
 No real Postgres/Dagster needed: get_db_cursor and the Dagster-touching methods
 are mocked per-test so only the pure status-computation logic is exercised.
@@ -52,7 +53,9 @@ def checker(tmp_path, monkeypatch):
     bundles_root.mkdir()
     monkeypatch.setattr(hc_module, "BUNDLES_DIR", str(bundles_root))
     monkeypatch.setattr(hc_module.ScraperHealthChecker, "cleanup_orphaned_dagster_runs", lambda self: None)
-    monkeypatch.setattr(hc_module.ScraperHealthChecker, "scan_dagster_stdout_logs", lambda self: {})
+    monkeypatch.setattr(
+        hc_module.ScraperHealthChecker, "scan_dagster_stdout_logs", lambda self, **kw: {}
+    )
     monkeypatch.setattr(hc_module.ScraperHealthChecker, "get_bundle_observability_settings", lambda self, name: (12, 0.3))
     monkeypatch.setattr(hc_module, "send_scraper_alert", lambda *a, **k: None)
     monkeypatch.setattr(hc_module, "record_scraper_execution", lambda *a, **k: 1)
@@ -163,3 +166,56 @@ def test_full_audit_does_mutate_dagster(checker, monkeypatch):
     monkeypatch.setattr(hc_module, "get_db_cursor", _fake_get_db_cursor([]))
     checker.check_all_scrapers_health(emit_alerts=True)
     assert called["cleanup"] is True
+
+
+# --- F19: stdout log scanning must not re-report the same old error forever. ---
+
+
+@pytest.fixture
+def raw_checker():
+    """A ScraperHealthChecker without __init__'s init_metrics_db() call."""
+    return hc_module.ScraperHealthChecker.__new__(hc_module.ScraperHealthChecker)
+
+
+def test_stdout_scan_does_not_repeat_an_old_error_on_the_next_scan(raw_checker, tmp_path, monkeypatch):
+    monkeypatch.setenv("DAGSTER_HOME", str(tmp_path))
+    log_file = tmp_path / "dagster.log"
+    log_file.write_text("normal line\n[ERROR] boom in bundle demo\n", encoding="utf-8")
+
+    first = raw_checker.scan_dagster_stdout_logs(advance_cursor=True)
+    assert any("boom" in e for errs in first.values() for e in errs)
+
+    # Nothing new was appended — a second scan must find nothing to report,
+    # not the same "[ERROR] boom" line again.
+    second = raw_checker.scan_dagster_stdout_logs(advance_cursor=True)
+    assert second == {}
+
+
+def test_stdout_scan_reports_only_new_content_after_old_error(raw_checker, tmp_path, monkeypatch):
+    monkeypatch.setenv("DAGSTER_HOME", str(tmp_path))
+    log_file = tmp_path / "dagster.log"
+    log_file.write_text("[ERROR] first boom in bundle demo\n", encoding="utf-8")
+    raw_checker.scan_dagster_stdout_logs(advance_cursor=True)
+
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write("[ERROR] second boom in bundle demo\n")
+
+    result = raw_checker.scan_dagster_stdout_logs(advance_cursor=True)
+    joined = " ".join(e for errs in result.values() for e in errs)
+    assert "second boom" in joined
+    assert "first boom" not in joined
+
+
+def test_stdout_scan_readonly_does_not_consume_the_error(raw_checker, tmp_path, monkeypatch):
+    """advance_cursor=False (the operator summary path) must not stop a later
+    real check (emit_alerts=True) from still seeing and alerting on it."""
+    monkeypatch.setenv("DAGSTER_HOME", str(tmp_path))
+    log_file = tmp_path / "dagster.log"
+    log_file.write_text("[ERROR] boom in bundle demo\n", encoding="utf-8")
+
+    readonly_first = raw_checker.scan_dagster_stdout_logs(advance_cursor=False)
+    readonly_second = raw_checker.scan_dagster_stdout_logs(advance_cursor=False)
+    assert readonly_first == readonly_second  # unchanged — nothing was consumed
+
+    real_check = raw_checker.scan_dagster_stdout_logs(advance_cursor=True)
+    assert real_check == readonly_first  # the real check still sees it once
