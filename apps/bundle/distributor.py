@@ -93,22 +93,33 @@ class BundleDistributor:
         return bundles_info
 
     def install_bundle(self, source: str, force: bool = False) -> dict[str, Any]:
-        """Installs a bundle from a Git URL, local directory, or tar.gz/zip archive."""
+        """Installs a bundle from a Git URL, local directory, or tar.gz/zip archive.
+
+        Never deletes an existing installation before its replacement is fully
+        resolved and validated: with --force, the new version is built at a
+        staging path alongside the current one and only swapped into place —
+        backing up the version it replaces — once that succeeds. A failure at
+        any point (clone, extractor resolve, validation) leaves whatever was
+        already installed untouched instead of destroying it first.
+        """
         logger.info(f"Installing bundle from source: {source}")
+        target_path: str | None = None
+        staging_path: str | None = None
+        backup_path: str | None = None
 
         try:
             # 1. Git Repository Source
             if source.endswith(".git") or source.startswith(("http://", "https://", "git@")) and not source.endswith((".zip", ".tar.gz", ".tgz")):
                 bundle_name = source.rstrip("/").split("/")[-1].replace(".git", "").replace("-", "_")
                 target_path = os.path.join(self.bundles_dir, bundle_name)
+                if os.path.exists(target_path) and not force:
+                    raise ValueError(f"Bundle '{bundle_name}' is already installed at {target_path}. Use --force to overwrite.")
 
-                if os.path.exists(target_path):
-                    if not force:
-                        raise ValueError(f"Bundle '{bundle_name}' is already installed at {target_path}. Use --force to overwrite.")
-                    shutil.rmtree(target_path)
-
-                logger.info(f"Cloning Git repository '{source}' into '{target_path}'...")
-                subprocess.check_call(["git", "clone", source, target_path])
+                staging_path = f"{target_path}__staging"
+                if os.path.exists(staging_path):
+                    shutil.rmtree(staging_path)
+                logger.info(f"Cloning Git repository '{source}' into '{staging_path}'...")
+                subprocess.check_call(["git", "clone", source, staging_path])
 
             # 2. Local Archive File (.tar.gz / .zip)
             elif os.path.isfile(source) and source.endswith((".tar.gz", ".tgz", ".zip")):
@@ -141,14 +152,14 @@ class BundleDistributor:
 
                 bundle_name = _sanitize_plugin_name(mdata.get("name", ""), "custom_bundle")
                 target_path = os.path.join(self.bundles_dir, bundle_name)
+                if os.path.exists(target_path) and not force:
+                    shutil.rmtree(temp_extract)
+                    raise ValueError(f"Bundle '{bundle_name}' already exists. Use --force to overwrite.")
 
-                if os.path.exists(target_path):
-                    if not force:
-                        shutil.rmtree(temp_extract)
-                        raise ValueError(f"Bundle '{bundle_name}' already exists. Use --force to overwrite.")
-                    shutil.rmtree(target_path)
-
-                shutil.move(source_dir, target_path)
+                staging_path = f"{target_path}__staging"
+                if os.path.exists(staging_path):
+                    shutil.rmtree(staging_path)
+                shutil.move(source_dir, staging_path)
                 if os.path.exists(temp_extract):
                     shutil.rmtree(temp_extract)
 
@@ -163,39 +174,47 @@ class BundleDistributor:
 
                 bundle_name = _sanitize_plugin_name(mdata.get("name", ""), os.path.basename(source))
                 target_path = os.path.join(self.bundles_dir, bundle_name)
+                if os.path.exists(target_path) and not force:
+                    raise ValueError(f"Bundle '{bundle_name}' already exists. Use --force to overwrite.")
 
-                if os.path.exists(target_path):
-                    if not force:
-                        raise ValueError(f"Bundle '{bundle_name}' already exists. Use --force to overwrite.")
-                    shutil.rmtree(target_path)
-
-                shutil.copytree(source, target_path, ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"))
+                staging_path = f"{target_path}__staging"
+                if os.path.exists(staging_path):
+                    shutil.rmtree(staging_path)
+                shutil.copytree(source, staging_path, ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"))
 
             else:
                 raise ValueError(f"Unsupported bundle installation source: {source}")
 
-            # Auto-install extractors declared with source URLs in the bundle manifest
+            # Auto-install extractors declared with source URLs in the bundle
+            # manifest, and validate — both against the STAGED copy, before it
+            # has ever replaced whatever (if anything) is currently installed.
             from apps.extractor.requirements import resolve_bundle_extractors
 
-            try:
-                extractor_report = resolve_bundle_extractors(target_path, force=force)
-            except Exception:
-                if os.path.exists(target_path):
-                    shutil.rmtree(target_path)
-                raise
-
+            extractor_report = resolve_bundle_extractors(staging_path, force=force)
             for item in extractor_report:
                 logger.info(
                     f"Extractor resolve [{item['status']}]: {item['name']}"
                     + (f" <- {item['source']}" if item.get("source") else "")
                 )
 
-            # Validate installed bundle
-            validator = BundleValidator(target_path)
+            validator = BundleValidator(staging_path)
             is_valid, errors = validator.validate()
             if not is_valid:
-                shutil.rmtree(target_path)
                 raise ValueError("Bundle validation failed post-installation:\n  - " + "\n  - ".join(errors))
+
+            # Everything checked out — swap the staged copy into place. Back up
+            # whatever is there first so a failure during the swap itself can
+            # still be undone; the backup is removed only once the swap lands.
+            if os.path.exists(target_path):
+                backup_path = f"{target_path}__prev"
+                if os.path.exists(backup_path):
+                    shutil.rmtree(backup_path)
+                os.rename(target_path, backup_path)
+            os.rename(staging_path, target_path)
+            staging_path = None
+            if backup_path and os.path.exists(backup_path):
+                shutil.rmtree(backup_path)
+                backup_path = None
 
             return {
                 "status": "success",
@@ -207,6 +226,14 @@ class BundleDistributor:
 
         except Exception as e:
             logger.error(f"Bundle installation failed: {e}")
+            # The staged attempt failed (or the swap itself did) — clean up the
+            # staging copy and, if we'd already moved the old version aside for
+            # the swap, put it back. The previously-installed bundle is never
+            # left deleted just because its replacement didn't work out.
+            if staging_path and os.path.exists(staging_path):
+                shutil.rmtree(staging_path, ignore_errors=True)
+            if backup_path and target_path and os.path.exists(backup_path) and not os.path.exists(target_path):
+                os.rename(backup_path, target_path)
             raise e
 
     def resolve_extractors(self, bundle_name: str, force: bool = False) -> list[dict[str, Any]]:

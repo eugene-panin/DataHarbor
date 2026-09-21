@@ -159,9 +159,38 @@ def _validate_plugin(kind: PluginKind, path: str) -> None:
 
 
 def _copy_plugin_snapshot(src: str, dest: str) -> None:
-    if os.path.exists(dest):
-        shutil.rmtree(dest)
-    os.makedirs(dest, exist_ok=True)
+    """Copy a clean snapshot of the plugin source into ``dest``.
+
+    Never deletes ``dest`` wholesale. A persistent ``--workdir`` is meant to be
+    reused across repeated publishes so its ``.git`` history (and thus
+    incremental commits) survives — a blind ``rmtree`` would destroy that on
+    every call. Every entry already in ``dest`` other than ``.git`` is removed
+    and replaced with a fresh copy of ``src`` instead, and ``src``/``dest``
+    overlapping (e.g. a mistaken ``--workdir`` pointing back at the plugin's
+    own source directory) is rejected outright rather than deleted into.
+    """
+    src_real = os.path.realpath(src)
+    dest_real = os.path.realpath(dest)
+    if (
+        dest_real == src_real
+        or dest_real.startswith(src_real + os.sep)
+        or src_real.startswith(dest_real + os.sep)
+    ):
+        raise ValueError(
+            f"Staging destination '{dest}' overlaps with the plugin source '{src}' — refusing to touch it."
+        )
+
+    if os.path.isdir(dest):
+        for entry in os.listdir(dest):
+            if entry == ".git":
+                continue
+            p = os.path.join(dest, entry)
+            if os.path.isdir(p) and not os.path.islink(p):
+                shutil.rmtree(p)
+            else:
+                os.remove(p)
+    else:
+        os.makedirs(dest, exist_ok=True)
 
     def _ignore(directory: str, names: list[str]) -> list[str]:
         ignored = []
@@ -283,9 +312,9 @@ def publish_plugin(
         staging = tempfile.mkdtemp(prefix=f"dh-publish-{kind}-{name}-")
 
     try:
-        _copy_plugin_snapshot(source, staging)
-
         if dry_run:
+            # No staging, no filesystem writes at all — "dry run" means nothing
+            # gets touched, including whatever might already be at --workdir.
             plan = {
                 "status": "dry_run",
                 "kind": kind,
@@ -311,6 +340,7 @@ def publish_plugin(
                 )
             return plan
 
+        _copy_plugin_snapshot(source, staging)
         _ensure_git_repo(staging, commit_message)
 
         if remote:

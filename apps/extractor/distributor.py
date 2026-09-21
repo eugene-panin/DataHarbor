@@ -85,7 +85,17 @@ class ExtractorDistributor:
         return extractors_info
 
     def install_extractor(self, source: str, force: bool = False) -> dict[str, Any]:
+        """Installs an extractor from a Git URL, local directory, or tar.gz/zip archive.
+
+        Never deletes an existing installation before its replacement is fully
+        validated — see BundleDistributor.install_bundle's docstring for the
+        same staged-swap rationale.
+        """
         logger.info(f"Installing extractor from source: {source}")
+        target_path: str | None = None
+        staging_path: str | None = None
+        backup_path: str | None = None
+
         try:
             if (
                 source.endswith(".git")
@@ -93,14 +103,15 @@ class ExtractorDistributor:
             ):
                 extractor_name = source.rstrip("/").split("/")[-1].replace(".git", "").replace("-", "_")
                 target_path = os.path.join(self.extractors_dir, extractor_name)
-                if os.path.exists(target_path):
-                    if not force:
-                        raise ValueError(
-                            f"Extractor '{extractor_name}' is already installed at {target_path}. "
-                            "Use --force to overwrite."
-                        )
-                    shutil.rmtree(target_path)
-                subprocess.check_call(["git", "clone", source, target_path])
+                if os.path.exists(target_path) and not force:
+                    raise ValueError(
+                        f"Extractor '{extractor_name}' is already installed at {target_path}. "
+                        "Use --force to overwrite."
+                    )
+                staging_path = f"{target_path}__staging"
+                if os.path.exists(staging_path):
+                    shutil.rmtree(staging_path)
+                subprocess.check_call(["git", "clone", source, staging_path])
 
             elif os.path.isfile(source) and source.endswith((".tar.gz", ".tgz", ".zip")):
                 temp_extract = os.path.join(self.extractors_dir, "_temp_extract")
@@ -133,15 +144,16 @@ class ExtractorDistributor:
 
                 extractor_name = _sanitize_plugin_name(mdata.get("name", ""), "custom_extractor")
                 target_path = os.path.join(self.extractors_dir, extractor_name)
-                if os.path.exists(target_path):
-                    if not force:
-                        shutil.rmtree(temp_extract)
-                        raise ValueError(
-                            f"Extractor '{extractor_name}' already exists. Use --force to overwrite."
-                        )
-                    shutil.rmtree(target_path)
+                if os.path.exists(target_path) and not force:
+                    shutil.rmtree(temp_extract)
+                    raise ValueError(
+                        f"Extractor '{extractor_name}' already exists. Use --force to overwrite."
+                    )
 
-                shutil.move(source_dir, target_path)
+                staging_path = f"{target_path}__staging"
+                if os.path.exists(staging_path):
+                    shutil.rmtree(staging_path)
+                shutil.move(source_dir, staging_path)
                 if os.path.exists(temp_extract):
                     shutil.rmtree(temp_extract)
 
@@ -155,27 +167,40 @@ class ExtractorDistributor:
 
                 extractor_name = _sanitize_plugin_name(mdata.get("name", ""), os.path.basename(source))
                 target_path = os.path.join(self.extractors_dir, extractor_name)
-                if os.path.exists(target_path):
-                    if not force:
-                        raise ValueError(
-                            f"Extractor '{extractor_name}' already exists. Use --force to overwrite."
-                        )
-                    shutil.rmtree(target_path)
+                if os.path.exists(target_path) and not force:
+                    raise ValueError(
+                        f"Extractor '{extractor_name}' already exists. Use --force to overwrite."
+                    )
 
+                staging_path = f"{target_path}__staging"
+                if os.path.exists(staging_path):
+                    shutil.rmtree(staging_path)
                 shutil.copytree(
                     source,
-                    target_path,
+                    staging_path,
                     ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"),
                 )
             else:
                 raise ValueError(f"Unsupported extractor installation source: {source}")
 
-            is_valid, errors = ExtractorValidator(target_path).validate()
+            is_valid, errors = ExtractorValidator(staging_path).validate()
             if not is_valid:
-                shutil.rmtree(target_path)
                 raise ValueError(
                     "Extractor validation failed post-installation:\n  - " + "\n  - ".join(errors)
                 )
+
+            # Validated — swap the staged copy into place, backing up whatever
+            # is currently installed until the swap itself has landed.
+            if os.path.exists(target_path):
+                backup_path = f"{target_path}__prev"
+                if os.path.exists(backup_path):
+                    shutil.rmtree(backup_path)
+                os.rename(target_path, backup_path)
+            os.rename(staging_path, target_path)
+            staging_path = None
+            if backup_path and os.path.exists(backup_path):
+                shutil.rmtree(backup_path)
+                backup_path = None
 
             try:
                 from apps.scraper.extractors.registry import clear_registry_cache
@@ -192,6 +217,10 @@ class ExtractorDistributor:
             }
         except Exception as e:
             logger.error(f"Extractor installation failed: {e}")
+            if staging_path and os.path.exists(staging_path):
+                shutil.rmtree(staging_path, ignore_errors=True)
+            if backup_path and target_path and os.path.exists(backup_path) and not os.path.exists(target_path):
+                os.rename(backup_path, target_path)
             raise
 
     def pack_extractor(self, extractor_name: str, output_dir: str | None = None) -> str:
