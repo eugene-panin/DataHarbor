@@ -5,6 +5,15 @@
 
 > **Idiomas / Languages:** [🇬🇧 English](README.md) · [🇷🇺 Русский](README.ru.md) · [🇺🇦 Українська](README.uk.md) · **🇪🇸 Español** · [🇹🇷 Türkçe](README.tr.md)
 
+> **21-09-2026:** una auditoría externa tras el primer lanzamiento público
+> encontró 22 problemas más 4 observaciones adicionales, en self-healing,
+> la capa de datos, el despliegue CLI/Kubernetes y seguridad (path
+> traversal, un paso de publish que seguía symlinks, un paso de backup que
+> podía mentir sobre su éxito). Todo está corregido y verificado — varios
+> mediante reproducción en vivo contra un stack real en ejecución o un
+> clúster `kind` desechable, no solo revisión de código. Lista completa
+> con causas raíz y verificación: **[CHANGELOG.md](CHANGELOG.md)**.
+
 Todo scraper acaba rompiéndose: un sitio rediseña su markup, un selector deja
 de coincidir y un pipeline empieza a devolver cero filas en silencio.
 Normalmente eso significa que alguien nota el hueco en un dashboard días

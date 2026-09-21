@@ -5,6 +5,15 @@
 
 > **Diller / Languages:** [🇬🇧 English](README.md) · [🇷🇺 Русский](README.ru.md) · [🇺🇦 Українська](README.uk.md) · [🇪🇸 Español](README.es.md) · **🇹🇷 Türkçe**
 
+> **21.09.2026:** ilk herkese açık sürümün ardından yapılan dış denetim,
+> self-healing, veri katmanı, CLI/Kubernetes dağıtımı ve güvenlikte (path
+> traversal, symlink'leri takip eden bir publish adımı, başarıyı yanlış
+> bildirebilen bir yedekleme adımı) 22 sorun ve 4 ek gözlem buldu. Hepsi
+> düzeltildi ve doğrulandı — bazıları yalnızca kod incelemesiyle değil,
+> gerçek çalışan bir yığına veya tek kullanımlık bir `kind` kümesine karşı
+> canlı tekrar üretimle. Kök nedenler ve doğrulamalarla tam liste:
+> **[CHANGELOG.md](CHANGELOG.md)**.
+
 Her scraper er ya da geç bozulur: bir site markup'ını yeniden tasarlar, bir
 selector eşleşmeyi bırakır ve pipeline sessizce sıfır satır döndürmeye
 başlar. Genelde bunun anlamı, günler sonra bir insanın dashboard'daki

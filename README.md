@@ -5,6 +5,14 @@
 
 > **Languages:** 🇬🇧 English · [🇷🇺 Русский](README.ru.md) · [🇺🇦 Українська](README.uk.md) · [🇪🇸 Español](README.es.md) · [🇹🇷 Türkçe](README.tr.md)
 
+> **2026-09-21:** an external audit of the initial public release found 22
+> issues plus 4 additional observations, spanning self-healing, the data
+> layer, the CLI/Kubernetes deployment, and security (path traversal, a
+> symlink-following publish step, a backup step that could lie about
+> succeeding). All are fixed and verified — several by live reproduction
+> against a running stack or a throwaway `kind` cluster, not just code
+> review. Full list with root causes and verification: **[CHANGELOG.md](CHANGELOG.md)**.
+
 Every scraper eventually breaks: a site redesigns its markup, a selector
 stops matching, and a pipeline quietly starts returning zero rows. Usually
 that means a human noticing the gap in a dashboard days later, then hand-editing
