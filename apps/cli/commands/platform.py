@@ -315,12 +315,13 @@ def health(
             print("Run scrapers to populate telemetry logs.\n")
             return
 
+        status_symbols = {
+            "HEALTHY": "✅ HEALTHY",
+            "DEGRADED": "⚠️ DEGRADED",
+            "UNKNOWN": "❔ UNKNOWN",
+        }
         for r in report:
-            status_symbol = (
-                "✅ HEALTHY"
-                if r["status"] == "HEALTHY"
-                else ("⚠️ DEGRADED" if r["status"] == "DEGRADED" else "🚨 CRITICAL")
-            )
+            status_symbol = status_symbols.get(r["status"], "🚨 CRITICAL")
             print(f"• Bundle: {r['bundle_name']} [{status_symbol}]")
             print(f"  Runs 24h:       {r['success_runs_24h']}/{r['total_runs_24h']}")
             print(f"  Items 24h:      {r['items_scraped_24h']:,}")
@@ -329,8 +330,11 @@ def health(
                 print("  Issues:")
                 for issue in r["issues"]:
                     print(f"    - {issue}")
-                print(f"  💡 Run AI Diagnosis: harbor health --fix {r['bundle_name']}")
-                print(f"  🤖 Run Autonomous AI Fix: harbor health --auto-fix {r['bundle_name']}")
+                if r["status"] != "UNKNOWN":
+                    # UNKNOWN means "no data yet" — there's nothing for the remediator
+                    # to diagnose or patch, so don't suggest it.
+                    print(f"  💡 Run AI Diagnosis: harbor health --fix {r['bundle_name']}")
+                    print(f"  🤖 Run Autonomous AI Fix: harbor health --auto-fix {r['bundle_name']}")
             print("-" * 70)
         print()
     except Exception as e:

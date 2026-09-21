@@ -25,19 +25,45 @@ def init_metrics_db():
                 );
             """)
 
+            # CREATE OR REPLACE VIEW cannot reorder, rename, or remove existing output
+            # columns (Postgres only allows appending at the end) — it fails silently
+            # into this function's own except-and-log, leaving a stale view in place
+            # with no error visible to the caller. DROP + CREATE sidesteps that trap
+            # for any future column change, not just this one.
+            cursor.execute("DROP VIEW IF EXISTS v_scraper_health_status;")
             cursor.execute("""
-                CREATE OR REPLACE VIEW v_scraper_health_status AS
-                SELECT 
-                    bundle_name,
-                    COUNT(*) AS total_runs_24h,
-                    SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) AS success_runs_24h,
-                    SUM(CASE WHEN status = 'ZERO_ROWS' OR status = 'DEGRADED' THEN 1 ELSE 0 END) AS anomaly_runs_24h,
-                    SUM(items_scraped) AS total_items_scraped_24h,
-                    MAX(created_at) AS last_run_timestamp,
-                    MAX(CASE WHEN status = 'SUCCESS' THEN created_at ELSE NULL END) AS last_success_timestamp
-                FROM scraper_execution_logs
-                WHERE created_at >= NOW() - INTERVAL '24 HOURS'
-                GROUP BY bundle_name;
+                CREATE VIEW v_scraper_health_status AS
+                SELECT
+                    w.bundle_name,
+                    w.total_runs_24h,
+                    w.success_runs_24h,
+                    w.anomaly_runs_24h,
+                    w.failed_runs_24h,
+                    w.total_items_scraped_24h,
+                    w.last_run_timestamp,
+                    ls.last_success_timestamp
+                FROM (
+                    SELECT
+                        bundle_name,
+                        COUNT(*) AS total_runs_24h,
+                        SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) AS success_runs_24h,
+                        SUM(CASE WHEN status = 'ZERO_ROWS' OR status = 'DEGRADED' THEN 1 ELSE 0 END) AS anomaly_runs_24h,
+                        SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed_runs_24h,
+                        SUM(items_scraped) AS total_items_scraped_24h,
+                        MAX(created_at) AS last_run_timestamp
+                    FROM scraper_execution_logs
+                    WHERE created_at >= NOW() - INTERVAL '24 HOURS'
+                    GROUP BY bundle_name
+                ) w
+                LEFT JOIN (
+                    -- Not windowed to 24h: a bundle whose last SUCCESS was 25 hours ago must
+                    -- still show that timestamp so staleness SLA can actually fire on it,
+                    -- instead of silently losing the value and looking like "no data".
+                    SELECT bundle_name, MAX(created_at) AS last_success_timestamp
+                    FROM scraper_execution_logs
+                    WHERE status = 'SUCCESS'
+                    GROUP BY bundle_name
+                ) ls ON ls.bundle_name = w.bundle_name;
             """)
         logger.info("Successfully initialized PostgreSQL scraper_execution_logs table via connection pool.")
     except Exception as e:

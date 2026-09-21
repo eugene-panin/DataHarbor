@@ -1,11 +1,10 @@
 import ast
-import importlib
+import importlib.util
 import inspect
 import json
 import logging
 import os
 import re
-import sys
 import traceback
 from datetime import date, datetime
 from typing import Any
@@ -409,10 +408,7 @@ selector-drift failure is usually in an extractor.py, not scraper.py):
 
         module_name = f"bundles.{bundle_name}.scraper"
         try:
-            if module_name in sys.modules:
-                mod = importlib.reload(sys.modules[module_name])
-            else:
-                mod = importlib.import_module(module_name)
+            mod = self._fresh_module_import(module_name, scraper_path)
         except Exception as e:
             return {
                 "status": "FAILED",
@@ -456,9 +452,12 @@ selector-drift failure is usually in an extractor.py, not scraper.py):
                 "traceback": traceback.format_exc(limit=8),
             }
 
-        count = len(items) if isinstance(items, list) else 0
+        # A record only counts if it's a non-empty dict — [None], [{}], or ["oops"]
+        # must not read as a working scrape just because the list itself is non-empty.
+        valid_items = [it for it in items if isinstance(it, dict) and it] if isinstance(items, list) else []
+        count = len(valid_items)
         status = "SUCCESS" if count else "ZERO_ROWS"
-        return {
+        result = {
             "status": status,
             "phase": "scrape",
             "bundle_name": bundle_name,
@@ -466,6 +465,27 @@ selector-drift failure is usually in an extractor.py, not scraper.py):
             "url": url,
             "items_scraped": count,
         }
+        if isinstance(items, list) and len(items) != count:
+            result["discarded_non_record_items"] = len(items) - count
+        return result
+
+    @staticmethod
+    def _fresh_module_import(module_name: str, file_path: str) -> Any:
+        """Execute ``file_path`` as a brand-new module object, every call.
+
+        Deliberately not ``importlib.reload()``: reload() re-executes the source into
+        the *same* module namespace, so a name the new source removed (a function, an
+        import) can still be found via the module's stale __dict__ from the previous
+        version — a verification pass could resolve/call something that no longer
+        exists in the file it's supposed to be testing. A fresh module object has no
+        prior state to leak from.
+        """
+        spec = importlib.util.spec_from_file_location(f"{module_name}__hap_verify", file_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load a module spec for '{file_path}'.")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
 
     @staticmethod
     def _resolve_scrape_callable(mod: Any) -> Any | None:

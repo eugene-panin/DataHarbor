@@ -126,9 +126,11 @@ class ScraperHealthChecker:
         """Audits all scrapers using connection pool, Dagster stdout, and per-bundle thresholds.
 
         ``emit_alerts=False`` is read-only (operator ``summary``): no notifier, no extra
-        FAILED rows written to ``scraper_execution_logs``.
+        FAILED rows written to ``scraper_execution_logs``, and — since it mutates Dagster
+        run state by canceling orphaned runs — no cleanup pass either.
         """
-        self.cleanup_orphaned_dagster_runs()
+        if emit_alerts:
+            self.cleanup_orphaned_dagster_runs()
         rows = []
         try:
             with get_db_cursor(commit=False) as cursor:
@@ -156,12 +158,18 @@ class ScraperHealthChecker:
             total_runs = r.get("total_runs_24h") or 0
             success_runs = r.get("success_runs_24h") or 0
             anomaly_runs = r.get("anomaly_runs_24h") or 0
+            failed_runs = r.get("failed_runs_24h") or 0
             last_success = r.get("last_success_timestamp")
 
             sla_hours, anomaly_threshold_ratio = self.get_bundle_observability_settings(bundle_name)
 
-            status = "HEALTHY"
+            # No execution data at all (ever) is not the same thing as "healthy" — we
+            # simply have no evidence either way. Every check below can only downgrade
+            # this default, never silently produce it by having nothing to say.
+            status = "UNKNOWN" if (total_runs == 0 and last_success is None) else "HEALTHY"
             issues = []
+            if status == "UNKNOWN":
+                issues.append("No execution data recorded yet for this bundle.")
 
             # Check 1: Dagster Process STDOUT / STDERR Errors
             if stdout_errors_by_bundle.get(bundle_name):
@@ -186,6 +194,18 @@ class ScraperHealthChecker:
                 if emit_alerts:
                     send_scraper_alert(bundle_name, "ZERO_ROWS_ANOMALY", issues[-1])
 
+            # Check 2b: Execution Failure Rate (exceptions/connection errors — distinct
+            # from ZERO_ROWS anomalies, which are "ran fine, found nothing"). FAILED runs
+            # were previously invisible to health: a bundle failing every run could still
+            # report HEALTHY because only ZERO_ROWS/DEGRADED counted as an anomaly.
+            if failed_runs > 0 and (failed_runs / max(1, total_runs)) >= anomaly_threshold_ratio:
+                status = "CRITICAL"
+                issues.append(
+                    f"High failure rate ({failed_runs}/{total_runs} runs FAILED, threshold: {int(anomaly_threshold_ratio*100)}%). Check error_message / stdout logs."
+                )
+                if emit_alerts:
+                    send_scraper_alert(bundle_name, "EXECUTION_FAILURE_RATE", issues[-1])
+
             # Check 3: Staleness SLA
             if last_success:
                 # created_at is TIMESTAMP WITH TIME ZONE; assume UTC if the driver ever hands us a naive value.
@@ -202,6 +222,17 @@ class ScraperHealthChecker:
                     )
                     if emit_alerts:
                         send_scraper_alert(bundle_name, "SLA_STALENESS_EXCEEDED", issues[-1])
+            elif total_runs > 0:
+                # Has run recently, but no SUCCESS has ever been recorded for it — that's
+                # not "no data" (status defaulted HEALTHY above skips this bundle only when
+                # total_runs is also 0), it's worse than a staleness breach.
+                status = "CRITICAL"
+                issues.append(
+                    f"No successful run has ever been recorded for '{bundle_name}' "
+                    f"({total_runs} run(s) in the last 24h, none SUCCESS)."
+                )
+                if emit_alerts:
+                    send_scraper_alert(bundle_name, "NEVER_SUCCEEDED", issues[-1])
 
             health_results.append({
                 "bundle_name": bundle_name,

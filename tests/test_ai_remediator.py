@@ -206,6 +206,59 @@ def test_model_can_patch_both_files_in_one_response(extractor_dir, bundle_dir):
     assert "return [{'x': 1}]" in (extractor_dir / "extractor.py").read_text(encoding="utf-8")
 
 
+# --- F04 regression: verification must not accept stale module state or
+# non-record items as proof of a working scrape. ---
+
+
+def test_fresh_module_import_does_not_leak_stale_names(tmp_path):
+    """importlib.reload() re-executes into the SAME namespace, so a name the new
+    source removed can still be found from the previous version. A fresh module
+    object has no prior state to leak from."""
+    scraper_path = tmp_path / "scraper.py"
+    scraper_path.write_text(
+        "OLD_HELPER = 'still here'\ndef scrape(target_url=None):\n    return [OLD_HELPER]\n",
+        encoding="utf-8",
+    )
+    engine = AIRemediatorEngine()
+    mod1 = engine._fresh_module_import("bundles.zz_stale_test.scraper", str(scraper_path))
+    assert mod1.OLD_HELPER == "still here"
+
+    scraper_path.write_text("def scrape(target_url=None):\n    return [{'x': 1}]\n", encoding="utf-8")
+    mod2 = engine._fresh_module_import("bundles.zz_stale_test.scraper", str(scraper_path))
+    assert not hasattr(mod2, "OLD_HELPER")
+    assert mod2.scrape()[0] == {"x": 1}
+
+
+def test_verification_rejects_non_dict_items_as_success(tmp_path, monkeypatch):
+    """[None] is a non-empty list, but it isn't scraped data — must not read as SUCCESS."""
+    bundles_root = tmp_path / "bundles"
+    target = bundles_root / "zz_verify_test"
+    target.mkdir(parents=True)
+    (target / "scraper.py").write_text("def scrape(target_url=None):\n    return [None, None]\n", encoding="utf-8")
+    monkeypatch.setattr("apps.observability.ai_remediator.BUNDLES_DIR", str(bundles_root))
+
+    engine = AIRemediatorEngine()
+    result = engine.run_verification_test("zz_verify_test", url="http://example.test/")
+    assert result["status"] == "ZERO_ROWS"
+    assert result["items_scraped"] == 0
+
+
+def test_verification_counts_only_real_dict_records(tmp_path, monkeypatch):
+    bundles_root = tmp_path / "bundles"
+    target = bundles_root / "zz_verify_test2"
+    target.mkdir(parents=True)
+    (target / "scraper.py").write_text(
+        "def scrape(target_url=None):\n    return [{'a': 1}, {}, 'not a record']\n", encoding="utf-8"
+    )
+    monkeypatch.setattr("apps.observability.ai_remediator.BUNDLES_DIR", str(bundles_root))
+
+    engine = AIRemediatorEngine()
+    result = engine.run_verification_test("zz_verify_test2", url="http://example.test/")
+    assert result["status"] == "SUCCESS"
+    assert result["items_scraped"] == 1
+    assert result["discarded_non_record_items"] == 2
+
+
 def test_patch_for_undeclared_path_is_ignored_and_fails_safely(bundle_dir):
     """A model that only offers a patch for a file we never showed it must not be
     allowed to write there — no candidate files means no patch is applied."""
