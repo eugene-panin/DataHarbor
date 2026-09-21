@@ -121,15 +121,20 @@ def search_vectors(
         return []
 
     try:
-        hits = client.search(
+        # QdrantClient.search() was removed from the client library (this
+        # project pins qdrant-client>=1.9.0; 1.19.0's client has no `search`
+        # attribute at all) — calling it always raised AttributeError, caught
+        # below and silently returned as "no results" on every single call.
+        # query_points() is the current API for a single nearest-neighbor query.
+        response = client.query_points(
             collection_name=collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             limit=limit,
             score_threshold=score_threshold,
         )
         return [
             {"id": hit.id, "score": hit.score, "payload": hit.payload or {}}
-            for hit in hits
+            for hit in response.points
         ]
     except Exception as e:
         logger.error("Qdrant search failed for '%s': %s", collection_name, e)

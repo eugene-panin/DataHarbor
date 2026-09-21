@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from typing import Any
 
 import clickhouse_connect
@@ -20,42 +21,63 @@ _CLICKHOUSE_ENABLED = os.getenv("CLICKHOUSE_ENABLED", "1").strip().lower() not i
     "off",
 }
 
+_RETRY_COOLDOWN_SECONDS = float(os.getenv("CLICKHOUSE_RETRY_COOLDOWN_SECONDS", "60"))
+
 _client = None
-_unavailable = False
+_unavailable_since: float | None = None
 _unavailable_logged = False
+_disabled_logged = False
 
 
 def _mark_unavailable(reason: str) -> None:
-    """Remember CH is down for this process; log once at warning."""
-    global _unavailable, _unavailable_logged, _client
-    _unavailable = True
+    """Remember CH is down; log once, and retry again after a cooldown instead
+    of staying disabled for the rest of this process's life. A transient blip
+    (CH mid-restart, one bad insert) previously poisoned every future call
+    with no way back short of a process restart.
+    """
+    global _unavailable_since, _unavailable_logged, _client
+    _unavailable_since = time.monotonic()
     _client = None
     if not _unavailable_logged:
         _unavailable_logged = True
-        logger.warning("ClickHouse unavailable — OLAP writes disabled (%s)", reason)
+        logger.warning(
+            "ClickHouse unavailable — OLAP writes disabled for %.0fs (%s)",
+            _RETRY_COOLDOWN_SECONDS,
+            reason,
+        )
 
 
 def reset_clickhouse_client_cache() -> None:
-    """Clear cached client / unavailable flag (tests)."""
-    global _client, _unavailable, _unavailable_logged
+    """Clear cached client / unavailable state (tests)."""
+    global _client, _unavailable_since, _unavailable_logged, _disabled_logged
     _client = None
-    _unavailable = False
+    _unavailable_since = None
     _unavailable_logged = False
+    _disabled_logged = False
 
 
 def get_clickhouse_client():
     """Return a ClickHouse client, or None when disabled / unreachable.
 
-    Failed auth or connection is cached so scrapers do not spam ERROR logs
-    on every ``record_scraper_execution`` call.
+    Failed auth or connection is cached for ``_RETRY_COOLDOWN_SECONDS`` so
+    scrapers do not spam ERROR logs on every ``record_scraper_execution``
+    call — but it is retried after that cooldown, not permanently. An
+    explicit ``CLICKHOUSE_ENABLED=0`` is not a failure to retry past; it's
+    logged once and left alone.
     """
-    global _client
+    global _client, _unavailable_since, _unavailable_logged, _disabled_logged
 
     if not _CLICKHOUSE_ENABLED:
-        _mark_unavailable("CLICKHOUSE_ENABLED=0")
+        if not _disabled_logged:
+            _disabled_logged = True
+            logger.warning("ClickHouse unavailable — OLAP writes disabled (CLICKHOUSE_ENABLED=0)")
         return None
-    if _unavailable:
-        return None
+    if _unavailable_since is not None:
+        if time.monotonic() - _unavailable_since < _RETRY_COOLDOWN_SECONDS:
+            return None
+        # Cooldown elapsed — try again instead of staying down forever.
+        _unavailable_since = None
+        _unavailable_logged = False
     if _client is not None:
         return _client
 
