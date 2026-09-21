@@ -1,9 +1,11 @@
 """Validates structural integrity of DataHarbor extractor plugins."""
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import py_compile
+import sys
 from typing import Any
 
 from apps.extractor.paths import EXTRACTORS_DIR
@@ -57,6 +59,15 @@ class ExtractorValidator:
                 module_stem, attr_name = resolve_entrypoint(entrypoint)
             except ValueError as e:
                 errors.append(str(e))
+        elif entrypoint not in (None, "", []):
+            # A non-string entrypoint (e.g. entrypoint: 123) previously fell
+            # through both the required-field check (it's non-empty, so that
+            # passed) and this string check (isinstance() is False, so this
+            # silently skipped too) — validate() reported no error at all.
+            errors.append(
+                f"Manifest field 'entrypoint' must be a string like 'module:function' "
+                f"in extractor '{self.extractor_name}', got {entrypoint!r}."
+            )
 
         for root, _, files in os.walk(self.extractor_path):
             for file in files:
@@ -77,17 +88,7 @@ class ExtractorValidator:
                 )
             else:
                 try:
-                    import importlib.util
-
-                    spec = importlib.util.spec_from_file_location(
-                        f"dh_extractor_validate_{self.extractor_name}_{module_stem}",
-                        module_file,
-                    )
-                    if spec is None or spec.loader is None:
-                        raise ImportError(f"Cannot load module from {module_file}")
-                    module = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(module)
-                    parse_fn = getattr(module, attr_name, None)
+                    parse_fn = self._import_entrypoint_attr(module_stem, attr_name, module_file)
                     if not callable(parse_fn):
                         errors.append(
                             f"Entrypoint '{entrypoint}' is not callable in extractor '{self.extractor_name}'."
@@ -98,6 +99,46 @@ class ExtractorValidator:
                     )
 
         return len(errors) == 0, errors
+
+    def _import_entrypoint_attr(self, module_stem: str, attr_name: str, module_file: str) -> Any:
+        """Import the entrypoint module as a submodule of a synthetic package
+        rooted at the extractor's own directory, then return `attr_name`.
+
+        Loading it with spec_from_file_location() and no parent package (as
+        this used to do) gives it __package__ = "" — any `from . import
+        helper` inside a real extractor breaks with "attempted relative
+        import with no known parent package", so validation rejected
+        perfectly working extractors that split code across local modules.
+        The registry's real runtime import (apps/scraper/extractors/
+        registry.py) doesn't have this problem because it imports through
+        the actual `extractors.<id>` package — but validate() also runs
+        against staging paths before an extractor is installed there, so it
+        can't rely on that path existing. Registering a throwaway package
+        module with __path__ pointed at the extractor directory gives
+        relative imports something real to resolve against either way.
+        """
+        pkg_name = f"dh_extractor_validate_{self.extractor_name}"
+        module_name = f"{pkg_name}.{module_stem}"
+        added: list[str] = []
+        try:
+            if pkg_name not in sys.modules:
+                pkg_spec = importlib.util.spec_from_loader(pkg_name, loader=None, is_package=True)
+                pkg_module = importlib.util.module_from_spec(pkg_spec)
+                pkg_module.__path__ = [self.extractor_path]
+                sys.modules[pkg_name] = pkg_module
+                added.append(pkg_name)
+
+            spec = importlib.util.spec_from_file_location(module_name, module_file)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"Cannot load module from {module_file}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            added.append(module_name)
+            spec.loader.exec_module(module)
+            return getattr(module, attr_name, None)
+        finally:
+            for name in added:
+                sys.modules.pop(name, None)
 
 
 def validate_all_extractors(extractors_dir: str = EXTRACTORS_DIR) -> dict[str, tuple[bool, list[str]]]:

@@ -9,6 +9,8 @@ import subprocess
 import typer
 
 from apps.bundle.distributor import BundleDistributor
+from apps.bundle.paths import BUNDLES_DIR
+from apps.bundle.plugin_contract import BundleContractError, load_manifest, resolve_dagster_entrypoint
 from apps.bundle.validator import validate_all_bundles
 from apps.cli.commands.platform import check_active_runtime
 from apps.cli.paths import PROJECT_ROOT
@@ -401,15 +403,23 @@ def run_bundle(
             raise typer.Exit(code=1)
         selected_runtime = "compose" if active_runtime == "DOCKER_COMPOSE" else "host"
 
+    bundle_path = os.path.join(BUNDLES_DIR, bundle_name)
+    try:
+        manifest = load_manifest(bundle_path)
+        module_leaf, attr = resolve_dagster_entrypoint(manifest)
+    except (OSError, BundleContractError) as e:
+        print(f"❌ Cannot resolve Dagster entrypoint for bundle '{bundle_name}': {e}")
+        raise typer.Exit(code=1) from e
+
     print(f"\n🚀 Materializing assets for bundle '{bundle_name}' ({selected_runtime})...")
     dagster_cmd = [
         "dagster",
         "asset",
         "materialize",
         "-m",
-        f"bundles.{bundle_name}.assets",
+        f"bundles.{bundle_name}.{module_leaf}",
         "-a",
-        "defs",
+        attr,
         "--select",
         "*",
     ]

@@ -5,6 +5,7 @@ import importlib
 import json
 import logging
 import os
+import shutil
 import sys
 from typing import Any
 
@@ -32,9 +33,32 @@ def _ensure_project_root_on_path() -> None:
 
 
 def clear_registry_cache() -> None:
-    """Drop loaded extractor cache (used after install/remove and in tests)."""
+    """Drop loaded extractor cache (used after install/remove and in tests).
+
+    Clearing _cache alone wasn't enough: the next _discover() call still
+    goes through importlib.import_module("extractors.<id>.<module_stem>"),
+    which returns whatever is already sitting in sys.modules rather than
+    re-reading the file — so reinstalling/upgrading an extractor kept
+    serving the OLD parse() code until the process restarted. Drop the
+    extractor package modules from sys.modules too so the next discovery
+    actually re-imports from disk.
+    """
     global _cache
     _cache = None
+    for name in [m for m in sys.modules if m == "extractors" or m.startswith("extractors.")]:
+        del sys.modules[name]
+    importlib.invalidate_caches()
+    # Dropping sys.modules alone isn't enough either: CPython's .pyc cache is
+    # invalidated by comparing the SOURCE file's mtime to the one baked into
+    # the .pyc header, both truncated to whole seconds — a reinstall that
+    # rewrites the file within the same second as the previous load is
+    # indistinguishable from "unchanged", and the stale compiled bytecode
+    # gets reused even though sys.modules was cleared and the fresh source
+    # is right there on disk. Removing the extractors tree's __pycache__
+    # dirs forces every next import to recompile from the current source.
+    for root, dirs, _files in os.walk(EXTRACTORS_DIR):
+        if "__pycache__" in dirs:
+            shutil.rmtree(os.path.join(root, "__pycache__"), ignore_errors=True)
 
 
 def _load_manifest(extractor_path: str) -> dict[str, Any]:
@@ -139,8 +163,19 @@ def require_extractor(extractor_id: str) -> ParseFn:
     return meta["parse"]
 
 
+def _host_matches_domain(host: str, domain: str) -> bool:
+    """True if `host` IS `domain`, or a proper subdomain of it.
+
+    Plain substring matching (`domain in host`) let "github.com" match
+    "github.com.evil-phishing.example" (attacker-controlled suffix after a
+    lookalike prefix) and "notgithub.com" (unrelated host that merely
+    contains the string), routing scraped content to the wrong extractor.
+    """
+    return host == domain or host.endswith("." + domain)
+
+
 def get_extractor(domain_or_id: str) -> ParseFn | None:
-    """Resolve parse callable by extractor id or by domain substring in URL/host."""
+    """Resolve parse callable by exact extractor id, or by domain/subdomain match."""
     key = (domain_or_id or "").strip().lower()
     if not key:
         return None
@@ -150,17 +185,15 @@ def get_extractor(domain_or_id: str) -> ParseFn | None:
     if normalized in registry:
         return registry[normalized]["parse"]
 
-    # Strip scheme/path for URL lookups
+    # Strip scheme/path/port for URL lookups
     needle = key
     for prefix in ("https://", "http://", "www."):
         needle = needle.removeprefix(prefix)
-    needle = needle.split("/")[0]
+    needle = needle.split("/")[0].split(":")[0]
 
     for meta in registry.values():
-        if meta["id"] in key or meta["id"] in needle:
-            return meta["parse"]
         for domain in meta["domains"]:
-            if domain in key or domain in needle:
+            if _host_matches_domain(needle, domain):
                 return meta["parse"]
     return None
 
@@ -168,9 +201,12 @@ def get_extractor(domain_or_id: str) -> ParseFn | None:
 def generate_page_urls_for_domain(base_url: str, max_pages: int = 10) -> list[str]:
     """Generate paginated URLs using the matching extractor, or a generic ?page= fallback."""
     registry = _registry()
-    url_lower = (base_url or "").lower()
+    needle = (base_url or "").strip().lower()
+    for prefix in ("https://", "http://", "www."):
+        needle = needle.removeprefix(prefix)
+    needle = needle.split("/")[0].split(":")[0]
     for meta in registry.values():
-        matched = any(domain in url_lower for domain in meta["domains"]) or meta["id"] in url_lower
+        matched = any(_host_matches_domain(needle, domain) for domain in meta["domains"])
         if matched and meta.get("generate_page_urls"):
             return meta["generate_page_urls"](base_url, max_pages=max_pages)
 

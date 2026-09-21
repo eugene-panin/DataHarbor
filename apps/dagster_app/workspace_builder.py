@@ -58,10 +58,14 @@ def _bundle_location(
 
 
 def _normalize_bundle_filter(include_bundles: Iterable[str] | None) -> set[str] | None:
+    """None means "no filter, all bundles". An explicit (even empty) iterable
+    means "only these" — collapsing an empty set back to None previously
+    turned a profile/`--only` selection of zero bundles into "all bundles",
+    the opposite of what was asked for.
+    """
     if include_bundles is None:
         return None
-    names = {str(x).strip() for x in include_bundles if str(x).strip()}
-    return names or None
+    return {str(x).strip() for x in include_bundles if str(x).strip()}
 
 
 def load_workspace_profiles(path: str | None = None) -> dict[str, Any]:

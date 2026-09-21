@@ -89,6 +89,35 @@ def test_workspace_include_bundles_filter(tmp_path):
                     del sys.modules[key]
 
 
+def test_workspace_empty_include_bundles_means_zero_bundles_not_all(tmp_path):
+    """F17: include_bundles=[] previously collapsed to None ("no filter"),
+    so an explicitly-empty selection silently loaded every bundle instead
+    of none."""
+    name = "zz_ws_empty_filter"
+    target = BUNDLES_ROOT / name
+    if target.exists():
+        shutil.rmtree(target)
+
+    try:
+        create_bundle(name)
+        doc, _ = build_workspace_document(
+            bundles_dir=str(BUNDLES_ROOT),
+            project_root=str(PROJECT_ROOT),
+            include_bundles=[],
+        )
+        names = location_names(doc)
+        assert "core" in names
+        assert f"bundle_{name}" not in names
+        assert not any(n.startswith("bundle_") for n in names)
+    finally:
+        if target.exists():
+            shutil.rmtree(target)
+        mod = f"bundles.{name}"
+        for key in list(sys.modules):
+            if key == mod or key.startswith(mod + "."):
+                del sys.modules[key]
+
+
 def test_named_workspace_writes_under_workspaces(tmp_path, monkeypatch):
     from apps.dagster_app import workspace_builder as wb
 
