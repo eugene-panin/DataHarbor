@@ -8,6 +8,16 @@ import typer
 app = typer.Typer(help="Master backup and restore engine", no_args_is_help=True)
 
 
+_STATUS_ICON = {
+    "ok": "✅",
+    "complete": "✅",
+    "empty": "➖",
+    "skipped": "➖",
+    "partial": "⚠️",
+    "failed": "❌",
+}
+
+
 @app.command("create")
 def create_backup(
     output: str | None = typer.Option(None, "--output", help="Output directory"),
@@ -17,9 +27,22 @@ def create_backup(
 
     out_dir = output if output else BACKUPS_DIR
     engine = MasterBackupEngine(output_dir=out_dir)
-    archive = engine.create_master_backup()
-    print("\n✨ Full Platform Master Backup Created Successfully!")
-    print(f"📦 Backup Archive: {archive}\n")
+    result = engine.create_master_backup()
+
+    overall = result["status"]
+    print(f"\n{_STATUS_ICON.get(overall, '❔')} Master Backup: {overall.upper()}")
+    print(f"📦 Archive: {result['archive_path']} ({result['size_mb']} MB)")
+    for name, comp in result["components"].items():
+        icon = _STATUS_ICON.get(comp["status"], "❔")
+        extra = f" — {comp['warning']}" if comp.get("warning") else (f" — {comp['detail']}" if comp.get("detail") else "")
+        print(f"  {icon} {name}: {comp['status']}{extra}")
+    if overall != "complete":
+        print(
+            "\n⚠️ This backup is not complete — see the component statuses above. "
+            "A partial backup can still be restored, but some data/config may be missing.\n"
+        )
+        raise typer.Exit(code=1)
+    print()
 
 
 @app.command("restore")
@@ -29,8 +52,18 @@ def restore_backup(
     """Restore full platform state from a backup archive."""
     from apps.backup.restore_engine import MasterRestoreEngine
 
-    MasterRestoreEngine(archive_file).restore_master_backup()
-    print("\n✨ Full Platform Master Restore Completed Successfully!\n")
+    result = MasterRestoreEngine(archive_file).restore_master_backup()
+
+    overall = result["status"]
+    print(f"\n{_STATUS_ICON.get(overall, '❔')} Master Restore: {overall.upper()}")
+    for name, comp in result["components"].items():
+        icon = _STATUS_ICON.get(comp["status"], "❔")
+        extra = f" — {comp['detail']}" if comp.get("detail") else ""
+        print(f"  {icon} {name}: {comp['status']}{extra}")
+    if overall != "complete":
+        print("\n⚠️ Restore did not fully complete — see the component statuses above.\n")
+        raise typer.Exit(code=1)
+    print()
 
 
 @app.command("list")
