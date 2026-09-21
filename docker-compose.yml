@@ -10,7 +10,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     ports:
-      - "54320:5432"  # Host Port 54320 -> Container 5432
+      - "127.0.0.1:54320:5432"  # loopback-only: no auth hardening beyond POSTGRES_PASSWORD
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -33,7 +33,7 @@ services:
       && cd /opt/dagster
       && PYTHONPATH=/app python -m apps.dagster_app.run_dev"
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"  # Dagster webserver has no auth of its own
     env_file:
       - .env
     environment:
@@ -84,9 +84,9 @@ services:
     container_name: dataharbor_seaweedfs
     command: "server -s3 -filer -dir=/data"
     ports:
-      - "8334:8333"  # S3 API Host Port
-      - "9334:9333"  # Master Web UI Host Port
-      - "8888:8888"  # Interactive Web Filer Explorer
+      - "127.0.0.1:8334:8333"  # S3 API Host Port — no auth
+      - "127.0.0.1:9334:9333"  # Master Web UI Host Port
+      - "127.0.0.1:8888:8888"  # Interactive Web Filer Explorer
     volumes:
       - seaweed_data:/data
     restart: unless-stopped
@@ -100,7 +100,7 @@ services:
     env_file:
       - .env
     ports:
-      - "56780:5678"
+      - "127.0.0.1:56780:5678"
     environment:
       - N8N_HOST=localhost
       - N8N_PORT=5678
@@ -124,8 +124,8 @@ services:
     env_file:
       - .env
     ports:
-      - "8123:8123"  # HTTP Interface
-      - "9000:9000"  # Native Client Interface
+      - "127.0.0.1:8123:8123"  # HTTP Interface
+      - "127.0.0.1:9000:9000"  # Native Client Interface
     environment:
       - CLICKHOUSE_USER=${CLICKHOUSE_USER}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
@@ -143,9 +143,18 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     container_name: dataharbor_qdrant
+    env_file:
+      - .env
+    environment:
+      # The app reads QDRANT_API_KEY as a client credential, but Qdrant itself
+      # ignored it — the server accepted unauthenticated requests from anyone
+      # who could reach the port regardless of this setting. This is what
+      # actually turns QDRANT_API_KEY into server-side auth. Empty disables it,
+      # matching the no-auth default when QDRANT_API_KEY is unset.
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
     ports:
-      - "6333:6333"  # HTTP API
-      - "6334:6334"  # gRPC
+      - "127.0.0.1:6333:6333"  # HTTP API
+      - "127.0.0.1:6334:6334"  # gRPC
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
@@ -186,7 +195,7 @@ services:
     image: nginx:alpine
     container_name: dataharbor_demo_site
     ports:
-      - "8098:80"  # browse the fixture at http://localhost:8098
+      - "127.0.0.1:8098:80"  # browse the fixture at http://localhost:8098
     volumes:
       - ./deploy/demo_site:/usr/share/nginx/html:ro
     restart: unless-stopped
