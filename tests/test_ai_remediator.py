@@ -5,6 +5,7 @@ and the LLM gateway + verification test are mocked per-test.
 """
 from __future__ import annotations
 
+import json
 from unittest.mock import patch
 
 import pytest
@@ -15,6 +16,8 @@ ORIGINAL_CODE = "def scrape():\n    return []\n"
 GOOD_PATCH = "```python\ndef scrape():\n    return [1, 2, 3]\n```"
 BAD_SYNTAX_PATCH = "```python\ndef scrape(:\n```"
 
+EXTRACTOR_ORIGINAL = "def parse(html, url):\n    return []\n"
+
 
 @pytest.fixture
 def bundle_dir(tmp_path, monkeypatch):
@@ -23,6 +26,20 @@ def bundle_dir(tmp_path, monkeypatch):
     target.mkdir(parents=True)
     (target / "scraper.py").write_text(ORIGINAL_CODE, encoding="utf-8")
     monkeypatch.setattr("apps.observability.ai_remediator.BUNDLES_DIR", str(bundles_root))
+    return target
+
+
+@pytest.fixture
+def extractor_dir(bundle_dir, tmp_path, monkeypatch):
+    """A bundle that declares one extractor — for testing extractor-targeted patches (F05)."""
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps({"requirements": {"extractors": ["zz_extractor"]}}), encoding="utf-8"
+    )
+    extractors_root = tmp_path / "extractors"
+    target = extractors_root / "zz_extractor"
+    target.mkdir(parents=True)
+    (target / "extractor.py").write_text(EXTRACTOR_ORIGINAL, encoding="utf-8")
+    monkeypatch.setattr("apps.extractor.paths.EXTRACTORS_DIR", str(extractors_root))
     return target
 
 
@@ -97,3 +114,105 @@ def test_no_verify_url_only_checks_import(bundle_dir):
         result = engine.autofix_bundle_scraper("zz_autofix_test")
     assert result["status"] == "SUCCESS"
     assert "import-only" in result["message"]
+
+
+# --- F03 regression: a request failure on the SECOND attempt must still roll back
+# the first attempt's patch, not return early and leave it on disk. ---
+
+
+def test_second_attempt_llm_failure_still_rolls_back_first_patch(bundle_dir):
+    engine = AIRemediatorEngine()
+    with (
+        patch.object(engine.gateway, "query_provider", side_effect=[GOOD_PATCH, ""]),
+        patch.object(engine, "run_verification_test", return_value={"status": "ZERO_ROWS", "items_scraped": 0}),
+    ):
+        result = engine.autofix_bundle_scraper("zz_autofix_test", verify_url="http://example.test/")
+    assert result["status"] == "FAILED"
+    assert "Rolled back" in result["message"]
+    # The critical assertion: attempt 1's patch (which failed verification) must NOT
+    # be left on disk just because attempt 2 never produced a response.
+    assert (bundle_dir / "scraper.py").read_text(encoding="utf-8") == ORIGINAL_CODE
+
+
+def test_second_attempt_ast_invalid_still_rolls_back_first_patch(bundle_dir):
+    engine = AIRemediatorEngine()
+    with (
+        patch.object(engine.gateway, "query_provider", side_effect=[GOOD_PATCH, BAD_SYNTAX_PATCH]),
+        patch.object(engine, "run_verification_test", return_value={"status": "ZERO_ROWS", "items_scraped": 0}),
+    ):
+        result = engine.autofix_bundle_scraper("zz_autofix_test", verify_url="http://example.test/")
+    assert result["status"] == "FAILED"
+    assert (bundle_dir / "scraper.py").read_text(encoding="utf-8") == ORIGINAL_CODE
+
+
+# --- F05 regression: selector drift lives in extractor.py, not scraper.py. The
+# diagnostic prompt must offer it as a patch target, and a model that patches only
+# the extractor must not be forced through (or silently dropped by) a scraper-only
+# patch path. ---
+
+
+def test_prompt_includes_declared_extractor_source(extractor_dir, bundle_dir):
+    engine = AIRemediatorEngine()
+    diag = engine.diagnose_bundle_failure("zz_autofix_test")
+    assert "extractors/zz_extractor/extractor.py" in diag["candidate_files"]
+    assert "extractors/zz_extractor/extractor.py" in diag["ai_prompt"]
+    assert EXTRACTOR_ORIGINAL.strip() in diag["ai_prompt"]
+
+
+def test_model_can_patch_only_the_extractor(extractor_dir, bundle_dir):
+    """The demo's actual failure mode: extractor.py is broken, scraper.py is fine.
+    A correct patch touches only the extractor — scraper.py must stay untouched."""
+    extractor_patch = (
+        "### FILE: extractors/zz_extractor/extractor.py\n"
+        "```python\n"
+        "def parse(html, url):\n"
+        "    return [{'x': 1}]\n"
+        "```\n"
+    )
+    engine = AIRemediatorEngine()
+    with (
+        patch.object(engine.gateway, "query_provider", return_value=extractor_patch),
+        patch.object(engine, "run_verification_test", return_value={"status": "SUCCESS", "items_scraped": 1}),
+    ):
+        result = engine.autofix_bundle_scraper("zz_autofix_test", verify_url="http://example.test/")
+    assert result["status"] == "SUCCESS"
+    assert result["patched_files"] == ["extractors/zz_extractor/extractor.py"]
+    assert "return [{'x': 1}]" in (extractor_dir / "extractor.py").read_text(encoding="utf-8")
+    assert (extractor_dir / "extractor.py.bak").read_text(encoding="utf-8") == EXTRACTOR_ORIGINAL
+    # scraper.py was never part of the fix — must be untouched.
+    assert (bundle_dir / "scraper.py").read_text(encoding="utf-8") == ORIGINAL_CODE
+    assert not (bundle_dir / "scraper.py.bak").exists()
+
+
+def test_model_can_patch_both_files_in_one_response(extractor_dir, bundle_dir):
+    multi_patch = (
+        "### FILE: bundles/zz_autofix_test/scraper.py\n"
+        "```python\ndef scrape():\n    return [1]\n```\n\n"
+        "### FILE: extractors/zz_extractor/extractor.py\n"
+        "```python\ndef parse(html, url):\n    return [{'x': 1}]\n```\n"
+    )
+    engine = AIRemediatorEngine()
+    with (
+        patch.object(engine.gateway, "query_provider", return_value=multi_patch),
+        patch.object(engine, "run_verification_test", return_value={"status": "SUCCESS", "items_scraped": 1}),
+    ):
+        result = engine.autofix_bundle_scraper("zz_autofix_test", verify_url="http://example.test/")
+    assert result["status"] == "SUCCESS"
+    assert set(result["patched_files"]) == {
+        "bundles/zz_autofix_test/scraper.py",
+        "extractors/zz_extractor/extractor.py",
+    }
+    assert "return [1]" in (bundle_dir / "scraper.py").read_text(encoding="utf-8")
+    assert "return [{'x': 1}]" in (extractor_dir / "extractor.py").read_text(encoding="utf-8")
+
+
+def test_patch_for_undeclared_path_is_ignored_and_fails_safely(bundle_dir):
+    """A model that only offers a patch for a file we never showed it must not be
+    allowed to write there — no candidate files means no patch is applied."""
+    sneaky_patch = "### FILE: apps/db/connection.py\n```python\nDROP = True\n```\n"
+    engine = AIRemediatorEngine()
+    with patch.object(engine.gateway, "query_provider", return_value=sneaky_patch):
+        result = engine.autofix_bundle_scraper("zz_autofix_test")
+    assert result["status"] == "FAILED"
+    assert "no patch for a known file" in result["message"].lower()
+    assert (bundle_dir / "scraper.py").read_text(encoding="utf-8") == ORIGINAL_CODE

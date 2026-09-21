@@ -4,6 +4,7 @@ import inspect
 import json
 import logging
 import os
+import re
 import sys
 import traceback
 from datetime import date, datetime
@@ -173,19 +174,78 @@ class AIRemediatorEngine:
             return response_text.split("```")[1].split("```")[0].strip()
         return response_text.strip()
 
+    _FILE_BLOCK_RE = re.compile(
+        r"###\s*FILE:\s*(?P<path>\S+)\s*\n```(?:python)?\n(?P<code>.*?)```",
+        re.DOTALL,
+    )
+
+    def extract_file_patches(self, response_text: str) -> dict[str, str]:
+        """Parse one or more ``### FILE: <path>`` + code-fence blocks into {path: code}.
+
+        Falls back to a single legacy code block (no FILE marker) under the sentinel
+        key ``""`` when the model ignored the multi-file format — the caller maps
+        that to the bundle's scraper.py, keeping single-file patches working.
+        """
+        matches = list(self._FILE_BLOCK_RE.finditer(response_text))
+        if matches:
+            return {m.group("path").strip(): m.group("code").strip() for m in matches}
+        code = self.extract_code_block(response_text)
+        return {"": code} if code else {}
+
+    def _declared_extractor_ids(self, bundle_name: str) -> list[str]:
+        """Extractor ids from this bundle's manifest.json requirements.extractors."""
+        manifest_path = os.path.join(BUNDLES_DIR, bundle_name, "manifest.json")
+        if not os.path.isfile(manifest_path):
+            return []
+        try:
+            with open(manifest_path, encoding="utf-8") as f:
+                manifest = json.load(f)
+            from apps.extractor.requirements import parse_extractor_requirements
+
+            raw = (manifest.get("requirements") or {}).get("extractors")
+            reqs = parse_extractor_requirements(raw)
+            return [r["name"] for r in reqs if r.get("name")]
+        except Exception as e:
+            logger.warning(f"Could not read declared extractors for '{bundle_name}': {e}")
+            return []
+
+    def _candidate_patch_files(self, bundle_name: str) -> dict[str, str]:
+        """{relative_path: absolute_path} for scraper.py + every declared extractor's
+        extractor.py — the full set of files --auto-fix is allowed to touch.
+
+        Selector drift is usually in the *extractor* (parse-only HTML plugin), not the
+        bundle's fetch/orchestration scraper.py — see AGENTS.md architecture. Patching
+        scraper.py alone cannot fix that failure mode.
+        """
+        from apps.extractor.paths import EXTRACTORS_DIR
+
+        candidates = {f"bundles/{bundle_name}/scraper.py": os.path.join(BUNDLES_DIR, bundle_name, "scraper.py")}
+        for extractor_id in self._declared_extractor_ids(bundle_name):
+            ext_path = os.path.join(EXTRACTORS_DIR, extractor_id, "extractor.py")
+            if os.path.isfile(ext_path):
+                candidates[f"extractors/{extractor_id}/extractor.py"] = ext_path
+        return candidates
+
     def diagnose_bundle_failure(self, bundle_name: str) -> dict[str, Any]:
-        """Collects failure logs and builds AI remediation prompt."""
+        """Collects failure logs and builds an AI remediation prompt covering
+        scraper.py AND every extractor.py the bundle declares."""
         scraper_path = os.path.join(BUNDLES_DIR, bundle_name, "scraper.py")
-        scraper_code = ""
-        if os.path.exists(scraper_path):
-            with open(scraper_path, encoding="utf-8") as f:
-                scraper_code = f.read()
+        candidate_files = self._candidate_patch_files(bundle_name)
+
+        sources = []
+        for relpath, abspath in candidate_files.items():
+            content = ""
+            if os.path.exists(abspath):
+                with open(abspath, encoding="utf-8") as f:
+                    content = f.read()
+            sources.append(f"#### {relpath}\n```python\n{content[:2500]}\n```")
+        sources_block = "\n\n".join(sources) if sources else "(no source files found)"
 
         last_error_log = {}
         try:
             with get_db_cursor(commit=False) as cursor:
                 cursor.execute("""
-                    SELECT * FROM scraper_execution_logs 
+                    SELECT * FROM scraper_execution_logs
                     WHERE bundle_name = %s AND (status = 'ZERO_ROWS' OR status = 'FAILED' OR status = 'DEGRADED')
                     ORDER BY created_at DESC LIMIT 1;
                 """, (bundle_name,))
@@ -212,14 +272,21 @@ class AIRemediatorEngine:
 - HTTP 429 (Limits): {last_error_log.get('http_429_count', 0)}
 - Error Message: {last_error_log.get('error_message') or 'No failure log in scraper_execution_logs.'}
 
-### 📄 CURRENT SCRAPER SOURCE CODE (scraper.py):
-```python
-{scraper_code[:2500]}
-```
+### 📄 CURRENT SOURCE (scraper.py + every declared extractor.py — a ZERO_ROWS /
+selector-drift failure is usually in an extractor.py, not scraper.py):
+{sources_block}
 
 ### 💡 INSTRUCTIONS FOR AI AGENT:
-1. Analyze the failure and provide complete replacement Python code for `bundles/{bundle_name}/scraper.py`.
-2. Wrap the complete executable code inside a ```python ``` code block.
+1. Diagnose which file(s) above actually need to change to fix the failure. Selector
+   drift (a ZERO_ROWS result with an unchanged fetch path) means an extractor.py needs
+   fixing, not scraper.py.
+2. For EACH file you change, output one block in exactly this format — complete
+   replacement content, no partial diffs, no files you are not changing:
+
+### FILE: <path exactly as shown above>
+```python
+<complete new file content>
+```
 ================================================================================
 """
         return {
@@ -227,7 +294,8 @@ class AIRemediatorEngine:
             "status": last_error_log.get("status") or "UNKNOWN",
             "error_message": last_error_log.get("error_message"),
             "ai_prompt": prompt,
-            "scraper_path": scraper_path
+            "scraper_path": scraper_path,
+            "candidate_files": candidate_files,
         }
 
     def get_compressed_diagnostic_json(self, bundle_name: str) -> dict[str, Any]:
@@ -437,102 +505,160 @@ class AIRemediatorEngine:
         except TypeError:
             return scrape_fn(url)
 
-    def _request_patch(self, prompt: str) -> tuple[str | None, dict[str, Any] | None]:
-        """Query the LLM and AST-validate the result. Returns (code, None) or (None, failure_dict)."""
-        response_text = self.gateway.query_provider(prompt)
-        if not response_text:
-            return None, {
-                "status": "FAILED",
-                "message": f"No response received from LLM provider '{self.gateway.provider}'. Check API key in .env.",
-            }
-        extracted_code = self.extract_code_block(response_text)
-        is_valid_ast, ast_msg = self.validate_python_ast(extracted_code)
-        if not is_valid_ast:
-            logger.error(f"Generated patch failed AST validation: {ast_msg}")
-            return None, {"status": "FAILED", "message": f"Generated code failed AST validation: {ast_msg}"}
-        return extracted_code, None
-
     def autofix_bundle_scraper(self, bundle_name: str, *, verify_url: str | None = None) -> dict[str, Any]:
-        """Query the LLM, AST-validate, apply the patch, then verify it actually works.
+        """Query the LLM, AST-validate, apply the patch(es), then verify they work.
 
-        Without ``verify_url`` this only proves the patched module imports cleanly —
-        strictly more than AST validation (catches bad references/attrs), but not a
-        scrape proof. With ``verify_url`` it runs one live scrape against that URL;
-        on failure it retries once with the failure fed back to the model, then
-        rolls back to the pre-patch ``scraper.py`` rather than leaving a scraper that
-        looks patched but doesn't work.
+        Candidate files are scraper.py plus every extractor.py the bundle declares —
+        selector drift usually lives in an extractor, not scraper.py, so a fix limited
+        to scraper.py alone can't address that failure mode (see AGENTS.md).
+
+        Without ``verify_url`` this only proves the patched module(s) import cleanly —
+        strictly more than AST validation, but not a scrape proof. With ``verify_url``
+        it runs one live scrape against that URL; on failure it retries once with the
+        failure fed back to the model. Whatever happens — LLM failure, AST failure,
+        write failure, or verification failure on either attempt — every file this
+        call touched is restored to its pre-patch content before returning FAILED.
+        Only a verified SUCCESS leaves patched files in place.
         """
         diag = self.diagnose_bundle_failure(bundle_name)
-        scraper_path = diag["scraper_path"]
+        candidate_files: dict[str, str] = diag["candidate_files"]
+        if not candidate_files:
+            return {
+                "status": "FAILED",
+                "message": f"No patchable files found for bundle '{bundle_name}' (no scraper.py, no declared extractors).",
+            }
 
-        try:
-            with open(scraper_path, encoding="utf-8") as f:
-                previous_code = f.read()
-        except OSError as e:
-            return {"status": "FAILED", "message": f"Could not read existing scraper before patching: {e}"}
+        previous_contents: dict[str, str] = {}
+        for relpath, abspath in candidate_files.items():
+            try:
+                with open(abspath, encoding="utf-8") as f:
+                    previous_contents[relpath] = f.read()
+            except OSError as e:
+                return {"status": "FAILED", "message": f"Could not read '{relpath}' before patching: {e}"}
 
         prompt = diag["ai_prompt"]
         verification: dict[str, Any] = {}
+        request_failure: dict[str, Any] | None = None
+        patched_files: list[str] = []
 
         for attempt in (1, 2):
             print(f"🤖 Querying LLM Provider ({self.gateway.provider}) — attempt {attempt}/2...")
-            extracted_code, failure = self._request_patch(prompt)
-            if failure:
-                return failure
+            response_text = self.gateway.query_provider(prompt)
+            if not response_text:
+                request_failure = {
+                    "status": "FAILED",
+                    "message": f"No response received from LLM provider '{self.gateway.provider}'. Check API key in .env.",
+                }
+                break
 
-            backup_path = f"{scraper_path}.bak"
+            raw_patches = self.extract_file_patches(response_text)
+            if "" in raw_patches:
+                # Legacy single-block response (no FILE marker) -> the bundle's scraper.py.
+                legacy_code = raw_patches.pop("")
+                primary = f"bundles/{bundle_name}/scraper.py"
+                if primary in candidate_files:
+                    raw_patches[primary] = legacy_code
+
+            patches = {p: code for p, code in raw_patches.items() if p in candidate_files}
+            ignored = sorted(set(raw_patches) - set(patches))
+            if ignored:
+                logger.warning(f"Ignoring patch for undeclared file(s) (not offered to the model): {ignored}")
+
+            if not patches:
+                request_failure = {
+                    "status": "FAILED",
+                    "message": "Model response contained no patch for a known file (scraper.py or a declared extractor.py).",
+                }
+                break
+
+            ast_errors = [
+                f"{relpath}: {msg}"
+                for relpath, code in patches.items()
+                for is_valid, msg in [self.validate_python_ast(code)]
+                if not is_valid
+            ]
+            if ast_errors:
+                request_failure = {
+                    "status": "FAILED",
+                    "message": "Generated code failed AST validation: " + "; ".join(ast_errors),
+                }
+                break
+
             try:
-                with open(backup_path, "w", encoding="utf-8") as f:
-                    f.write(previous_code)
-                with open(scraper_path, "w", encoding="utf-8") as f:
-                    f.write(extracted_code)
+                for relpath, code in patches.items():
+                    abspath = candidate_files[relpath]
+                    with open(f"{abspath}.bak", "w", encoding="utf-8") as f:
+                        f.write(previous_contents[relpath])
+                    with open(abspath, "w", encoding="utf-8") as f:
+                        f.write(code)
+                    if relpath not in patched_files:
+                        patched_files.append(relpath)
             except Exception as e:
-                return {"status": "FAILED", "message": f"Failed writing patch to disk: {e}"}
+                request_failure = {"status": "FAILED", "message": f"Failed writing patch to disk: {e}"}
+                break
 
-            print(f"🧪 Verifying patch ({'live scrape against ' + verify_url if verify_url else 'import only'})...")
+            print(
+                f"🧪 Verifying patch to {', '.join(sorted(patches))} "
+                f"({'live scrape against ' + verify_url if verify_url else 'import only'})..."
+            )
             verification = self.run_verification_test(bundle_name, url=verify_url)
             if verification.get("status") in {"SUCCESS", "IMPORT_OK"}:
-                logger.info(f"Applied and verified AI patch to '{scraper_path}' (previous version: '{backup_path}').")
+                logger.info(f"Applied and verified AI patch to {sorted(patches)}.")
                 note = "" if verify_url else " (import-only — pass --url for a live scrape proof)"
                 return {
                     "status": "SUCCESS",
                     "message": (
-                        f"Successfully auto-remediated '{bundle_name}'! AST validation + verification "
-                        f"({verification['status']}) passed{note}. Previous scraper.py saved to "
-                        f"'{os.path.basename(backup_path)}'."
+                        f"Successfully auto-remediated '{bundle_name}'! Patched {', '.join(sorted(patches))}. "
+                        f"AST validation + verification ({verification['status']}) passed{note}."
                     ),
                     "provider": self.gateway.provider,
-                    "backup_path": backup_path,
+                    "patched_files": sorted(patches),
                     "verification": verification,
                 }
 
             if attempt == 1 and verify_url:
                 logger.warning(f"Patch attempt 1 failed verification: {verification}. Retrying with feedback.")
+                changed_src = "\n\n".join(f"#### {p}\n```python\n{c}\n```" for p, c in patches.items())
                 prompt = (
                     f"{diag['ai_prompt']}\n\n"
                     "### ⚠️ PREVIOUS ATTEMPT FAILED VERIFICATION\n"
-                    f"Your last patch was applied and tested against {verify_url!r}, result:\n"
+                    f"You changed these file(s) and they were tested against {verify_url!r}, result:\n"
                     f"{json.dumps(verification, default=str)}\n\n"
-                    "Here is the patch that failed:\n```python\n"
-                    f"{extracted_code}\n```\n"
-                    "Fix it and return the complete corrected scraper.py."
+                    f"Here is what you changed:\n{changed_src}\n\n"
+                    "Fix it. Use the same '### FILE: <path>' format for each file you change."
                 )
+                continue
+            break
 
-        # Both attempts failed verification (or one attempt, when verify_url is unset) — roll back.
-        try:
-            with open(scraper_path, "w", encoding="utf-8") as f:
-                f.write(previous_code)
-        except Exception as e:
+        # Whatever failed — restore every file this call touched to its pre-patch content.
+        rollback_errors = []
+        for relpath in patched_files:
+            try:
+                with open(candidate_files[relpath], "w", encoding="utf-8") as f:
+                    f.write(previous_contents[relpath])
+            except Exception as e:
+                rollback_errors.append(f"{relpath}: {e}")
+
+        if rollback_errors:
             return {
                 "status": "FAILED",
-                "message": f"Patch failed verification AND rollback failed: {e}. Manually restore from '{scraper_path}.bak'.",
+                "message": (
+                    "Patch failed and automatic rollback also failed for: "
+                    + "; ".join(rollback_errors)
+                    + ". Restore manually from the matching '.bak' files."
+                ),
                 "verification": verification,
             }
+
+        if request_failure:
+            suffix = f" Rolled back {', '.join(patched_files)} to its pre-patch version." if patched_files else ""
+            return {"status": "FAILED", "message": f"{request_failure['message']}{suffix}", "verification": verification or None}
+
         return {
             "status": "FAILED",
             "message": (
                 f"Patch failed verification ({verification.get('status')}) after "
-                f"{'2 attempts' if verify_url else '1 attempt'}. Rolled back to the original scraper.py."
+                f"{'2 attempts' if verify_url else '1 attempt'}. Rolled back {', '.join(patched_files)}."
             ),
             "verification": verification,
         }
