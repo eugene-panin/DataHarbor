@@ -65,6 +65,37 @@ def test_copies_fresh_content_from_source(tmp_path):
     assert (dest / "sub" / "a.py").read_text(encoding="utf-8") == "a = 1\n"
 
 
+def test_does_not_follow_symlinks_outside_source(tmp_path):
+    """Additional observation: shutil.copytree()'s default symlinks=False
+    DEREFERENCES symlinks — a symlink in a plugin's source tree pointing
+    outside it (into $HOME, another project, /etc) would get its REAL
+    TARGET CONTENT copied into the staged snapshot that publish_plugin()
+    pushes to a public git repo. Symlinks must be skipped outright, at
+    both the top level and inside subdirectories."""
+    secret = tmp_path / "secret_outside"
+    secret.mkdir()
+    (secret / "passwords.txt").write_text("TOP SECRET", encoding="utf-8")
+
+    src = tmp_path / "plugin"
+    src.mkdir()
+    (src / "manifest.json").write_text('{"name": "x"}', encoding="utf-8")
+    (src / "link_to_secret_file.txt").symlink_to(secret / "passwords.txt")
+    (src / "link_to_secret_dir").symlink_to(secret, target_is_directory=True)
+    (src / "sub").mkdir()
+    (src / "sub" / "nested_link.txt").symlink_to(secret / "passwords.txt")
+
+    dest = tmp_path / "workdir"
+    _copy_plugin_snapshot(str(src), str(dest))
+
+    dest_entries = {p.name for p in dest.iterdir()}
+    assert "link_to_secret_file.txt" not in dest_entries
+    assert "link_to_secret_dir" not in dest_entries
+    assert not (dest / "sub" / "nested_link.txt").exists()
+    for path in dest.rglob("*"):
+        if path.is_file():
+            assert "TOP SECRET" not in path.read_text(encoding="utf-8")
+
+
 @pytest.fixture
 def stubbed_publish(monkeypatch, tmp_path):
     """Bypass plugin lookup/validation so dry-run's OWN staging behavior can

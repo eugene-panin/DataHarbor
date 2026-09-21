@@ -521,6 +521,19 @@ selector-drift failure is usually in an extractor.py, not scraper.py):
 
     @staticmethod
     def _invoke_scrape(scrape_fn: Any, url: str) -> Any:
+        """Call scrape_fn(url) using whichever calling convention its first
+        parameter actually supports.
+
+        Previously tried a keyword call and fell back to a positional one
+        `except TypeError` — but that catches ANY TypeError the scraper
+        raises internally, not just "unexpected keyword argument". A bug in
+        the scraper itself that happened to raise TypeError after already
+        making real HTTP requests (or writing to a DB) would be silently
+        reinterpreted as "wrong calling convention" and the whole scrape
+        re-run a second time. inspect.signature already tells us definitively
+        which convention the parameter accepts, so there's no need to guess
+        and retry — call it exactly once.
+        """
         sig = inspect.signature(scrape_fn)
         params = [
             p
@@ -534,11 +547,10 @@ selector-drift failure is usually in an extractor.py, not scraper.py):
         ]
         if not params:
             return scrape_fn()
-        first = params[0].name
-        try:
-            return scrape_fn(**{first: url})
-        except TypeError:
+        first = params[0]
+        if first.kind == inspect.Parameter.POSITIONAL_ONLY:
             return scrape_fn(url)
+        return scrape_fn(**{first.name: url})
 
     def autofix_bundle_scraper(self, bundle_name: str, *, verify_url: str | None = None) -> dict[str, Any]:
         """Query the LLM, AST-validate, apply the patch(es), then verify they work.

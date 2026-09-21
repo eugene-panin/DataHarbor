@@ -195,7 +195,19 @@ def _copy_plugin_snapshot(src: str, dest: str) -> None:
     def _ignore(directory: str, names: list[str]) -> list[str]:
         ignored = []
         for name in names:
+            full = os.path.join(directory, name)
             if name in _IGNORE_NAMES or name.endswith(".pyc"):
+                ignored.append(name)
+            elif os.path.islink(full):
+                # shutil.copytree()'s default symlinks=False DEREFERENCES
+                # symlinks — it copies whatever the link points to, including
+                # anything outside `src` (a symlink into the user's home
+                # directory, another project, /etc). For a tool that pushes
+                # its output to a public git repo, that's a real exfiltration
+                # risk, not just a correctness quirk. Skip symlinks outright
+                # rather than dereference or preserve them (a preserved
+                # symlink would just publish a host-specific/broken path).
+                logger.warning("Skipping symlink '%s' — publish does not follow or copy symlinks.", full)
                 ignored.append(name)
         return ignored
 
@@ -204,6 +216,9 @@ def _copy_plugin_snapshot(src: str, dest: str) -> None:
         if entry in _IGNORE_NAMES or entry.endswith(".pyc"):
             continue
         s = os.path.join(src, entry)
+        if os.path.islink(s):
+            logger.warning("Skipping symlink '%s' — publish does not follow or copy symlinks.", s)
+            continue
         d = os.path.join(dest, entry)
         if os.path.isdir(s):
             shutil.copytree(s, d, ignore=_ignore)

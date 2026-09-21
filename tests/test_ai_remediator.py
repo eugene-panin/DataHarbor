@@ -269,3 +269,47 @@ def test_patch_for_undeclared_path_is_ignored_and_fails_safely(bundle_dir):
     assert result["status"] == "FAILED"
     assert "no patch for a known file" in result["message"].lower()
     assert (bundle_dir / "scraper.py").read_text(encoding="utf-8") == ORIGINAL_CODE
+
+
+# --- _invoke_scrape: must call the scraper exactly once (additional observation) ---
+
+
+def test_invoke_scrape_calls_keyword_only_param_by_name():
+    calls = []
+
+    def scrape(*, target_url):
+        calls.append(target_url)
+        return []
+
+    AIRemediatorEngine._invoke_scrape(scrape, "http://example.test/")
+    assert calls == ["http://example.test/"]
+
+
+def test_invoke_scrape_calls_positional_only_param_positionally():
+    calls = []
+
+    def scrape(url, /):
+        calls.append(url)
+        return []
+
+    AIRemediatorEngine._invoke_scrape(scrape, "http://example.test/")
+    assert calls == ["http://example.test/"]
+
+
+def test_invoke_scrape_does_not_retry_and_double_execute_on_internal_type_error():
+    """Before the fix, a keyword call that raised TypeError for ANY reason —
+    not just an unexpected-keyword-argument mismatch — was blindly retried
+    positionally `except TypeError`. A scraper that makes a real request (or
+    writes to a DB) before hitting an internal bug that happens to raise
+    TypeError would get run a second time, silently, as if that were a
+    retry-safe no-op."""
+    call_count = {"n": 0}
+
+    def scrape(url):
+        call_count["n"] += 1
+        raise TypeError("boom: unrelated bug inside the scraper itself")
+
+    with pytest.raises(TypeError, match="boom"):
+        AIRemediatorEngine._invoke_scrape(scrape, "http://example.test/")
+
+    assert call_count["n"] == 1, "scrape() must be called exactly once, never retried"

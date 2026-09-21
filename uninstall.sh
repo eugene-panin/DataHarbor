@@ -47,12 +47,44 @@ if [ "$KEEP_DATA" = "yes" ]; then
     echo ""
     echo "🔒 CREATING MASTER BACKUP TO PRESERVE ALL PLATFORM DATA..."
     mkdir -p "$USER_BACKUPS_DIR"
+    # `|| true` here used to swallow any backup failure — including "no harbor
+    # CLI found at all" (neither branch below even runs then) — and the
+    # script printed "successfully preserved" unconditionally regardless,
+    # right before stopping services and deleting the venv. BACKUP_OK now
+    # tracks the real outcome instead of assuming success.
+    BACKUP_OK="no"
     if [ -f "$GLOBAL_HARBOR_BIN" ]; then
-        "$GLOBAL_HARBOR_BIN" backup create --output "$USER_BACKUPS_DIR" || true
+        if "$GLOBAL_HARBOR_BIN" backup create --output "$USER_BACKUPS_DIR"; then
+            BACKUP_OK="yes"
+        fi
     elif [ -f "$VENV_DIR/bin/harbor" ]; then
-        "$VENV_DIR/bin/harbor" backup create --output "$USER_BACKUPS_DIR" || true
+        if "$VENV_DIR/bin/harbor" backup create --output "$USER_BACKUPS_DIR"; then
+            BACKUP_OK="yes"
+        fi
+    else
+        echo "⚠️  No harbor CLI found (checked ${GLOBAL_HARBOR_BIN} and ${VENV_DIR}/bin/harbor) — cannot create a backup."
     fi
-    echo "✨ All platform data successfully preserved at: ${USER_BACKUPS_DIR}"
+
+    if [ "$BACKUP_OK" = "yes" ]; then
+        echo "✨ All platform data successfully preserved at: ${USER_BACKUPS_DIR}"
+    else
+        echo "❌ Backup FAILED — nothing was saved to ${USER_BACKUPS_DIR}."
+        if [ -t 0 ]; then
+            echo "   Continuing will still stop services and delete the venv/CLI — destructive, with no backup."
+            read -p "Continue WITHOUT a successful backup? [y/N]: " confirm
+            case "$confirm" in
+                [yY][eE][sS]|[yY]) ;;
+                *)
+                    echo "Aborted. Fix the backup error above and re-run, or pass --purge to skip the backup entirely."
+                    exit 1
+                    ;;
+            esac
+        else
+            echo "   Non-interactive run — aborting rather than deleting the install with no working backup."
+            echo "   Fix the backup error above and re-run, or pass --purge to skip the backup entirely."
+            exit 1
+        fi
+    fi
 fi
 
 # 2. Stop running services

@@ -79,7 +79,14 @@ def download_media_stream_to_s3(
     s3_key: str,
     content_type: str = "video/mp4",
 ) -> dict[str, Any]:
-    """Stream a remote media URL into S3."""
+    """Stream a remote media URL into S3.
+
+    Uses upload_fileobj(), which reads the source in chunks and multipart-
+    uploads large files, instead of response.read() + put_object(): that
+    buffered the ENTIRE remote response into process memory before
+    uploading anything — for the multi-GB video files this function is
+    meant for, "streaming" was actually a full in-memory copy per download.
+    """
     from urllib.request import urlopen
 
     bucket_name = os.getenv("S3_BUCKET_NAME", "dataharbor-raw")
@@ -88,12 +95,11 @@ def download_media_stream_to_s3(
 
     try:
         with urlopen(media_url, timeout=30) as response:
-            body = response.read()
-            client.put_object(
-                Bucket=bucket_name,
-                Key=s3_key,
-                Body=body,
-                ContentType=content_type,
+            client.upload_fileobj(
+                response,
+                bucket_name,
+                s3_key,
+                ExtraArgs={"ContentType": content_type},
             )
         s3_path = f"s3://{bucket_name}/{s3_key}"
         logger.info("Streamed media to %s", s3_path)
