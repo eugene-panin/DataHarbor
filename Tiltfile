@@ -17,6 +17,8 @@ k8s_resource('seaweedfs', port_forwards=['8334:8333', '9334:9333', '8888:8888'])
 k8s_resource('clickhouse', port_forwards=['8123:8123', '9000:9000'])
 k8s_resource('qdrant', port_forwards=['6333:6333', '6334:6334'])
 k8s_resource('dagster', port_forwards=3000, resource_deps=['postgres', 'clickhouse', 'qdrant', 'seaweedfs'])
+k8s_resource('demo-site', port_forwards='8098:80')
+k8s_resource('grafana', port_forwards='3001:3000', resource_deps=['postgres', 'clickhouse'])
 
 if os.getenv('ENABLE_N8N') == '1':
   k8s_resource('n8n', port_forwards=5678)

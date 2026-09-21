@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-site-html
+data:
+  # Mirrors deploy/demo_site/*.html — the same fixture Compose bind-mounts
+  # for the demo_site service, so the `demo` bundle scrapes identical
+  # content under both runtimes. kustomize's file-based configMapGenerator
+  # can't reach outside deploy/k8s/base (security restrictor), so this is
+  # copied rather than generated; keep it in sync if that fixture changes.
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+    <meta charset="utf-8">
+    <title>DataHarbor Demo Directory</title>
+    <style>
+      body { font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #1a1a2e; }
+      .eyebrow { color: #0f766e; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; font-weight: 600; }
+      .listing { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0; }
+      .listing h2 { margin: 0 0 4px; font-size: 18px; }
+      .listing p { margin: 0; color: #475569; font-size: 14px; }
+      nav a { color: #0f766e; }
+    </style>
+    </head>
+    <body>
+      <p class="eyebrow">DataHarbor Demo Directory &middot; page 1 of 2</p>
+      <p>This page is served locally by the <code>demo_site</code> Docker Compose service — nothing here leaves your machine. The <code>demo</code> bundle scrapes it end to end so you can see the platform work without any API keys.</p>
+
+      <div class="listing">
+        <h2>Acme Analytics</h2>
+        <p>Self-serve BI dashboards for seed-stage startups.</p>
+      </div>
+      <div class="listing">
+        <h2>Beacon Robotics</h2>
+        <p>Warehouse picking robots with same-day fleet onboarding.</p>
+      </div>
+      <div class="listing">
+        <h2>Cascade Ledger</h2>
+        <p>Usage-based billing infrastructure for API companies.</p>
+      </div>
+      <div class="listing">
+        <h2>Driftwood Logistics</h2>
+        <p>Last-mile routing optimization for regional carriers.</p>
+      </div>
+
+      <nav><a href="/page-2.html">Next page &rarr;</a></nav>
+    </body>
+    </html>
+  page-2.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+    <meta charset="utf-8">
+    <title>DataHarbor Demo Directory — page 2</title>
+    <style>
+      body { font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #1a1a2e; }
+      .eyebrow { color: #0f766e; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; font-weight: 600; }
+      .listing { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0; }
+      .listing h2 { margin: 0 0 4px; font-size: 18px; }
+      .listing p { margin: 0; color: #475569; font-size: 14px; }
+      nav a { color: #0f766e; }
+    </style>
+    </head>
+    <body>
+      <p class="eyebrow">DataHarbor Demo Directory &middot; page 2 of 2</p>
+
+      <div class="listing">
+        <h2>Everline Freight</h2>
+        <p>Spot-rate marketplace for LTL shipping.</p>
+      </div>
+      <div class="listing">
+        <h2>Foundry Metrics</h2>
+        <p>Product analytics built for open-source maintainers.</p>
+      </div>
+      <div class="listing">
+        <h2>Granite Payroll</h2>
+        <p>Contractor payroll and 1099 filing automation.</p>
+      </div>
+      <div class="listing">
+        <h2>Harbor Notary</h2>
+        <p>Remote online notarization for real-estate closings.</p>
+      </div>
+
+      <nav><a href="/">&larr; Back to page 1</a></nav>
+    </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-site
+  labels:
+    app: demo-site
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-site
+  template:
+    metadata:
+      labels:
+        app: demo-site
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: demo-site-html
+              mountPath: /usr/share/nginx/html
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: demo-site-html
+          configMap:
+            name: demo-site-html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-site
+  labels:
+    app: demo-site
+spec:
+  selector:
+    app: demo-site
+  ports:
+    - port: 80
+      targetPort: 80

@@ -5,4 +5,4 @@ namespace: dataharbor-local
 
 resources:
   - ../local
-  - ../../base/n8n.yaml
+  - ../../base/n8n

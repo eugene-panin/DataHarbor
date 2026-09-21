@@ -16,9 +16,14 @@ spec:
     spec:
       containers:
         - name: dagster-webserver
-          image: dataharbor-dagster:latest
+          # Must match the name Tiltfile's docker_build() actually builds
+          # ('dataharbor-app') — 'dataharbor-dagster' is not a name Tilt (or
+          # anything else) ever builds or pushes, so Tilt couldn't associate
+          # this Deployment with its built image and Kubernetes fell back to
+          # pulling a nonexistent image from a registry (ImagePullBackOff).
+          image: dataharbor-app
           imagePullPolicy: IfNotPresent
-          command: ["sh", "-c", "mkdir -p /tmp/dagster_home && cp apps/dagster_app/dagster.yaml /tmp/dagster_home/dagster.yaml && python -m apps.dagster_app.run_dev"]
+          command: ["sh", "-c", "mkdir -p $DAGSTER_HOME && cp apps/dagster_app/dagster.yaml $DAGSTER_HOME/dagster.yaml && python -m apps.dagster_app.run_dev"]
           env:
             - name: DAGSTER_WORKSPACE_NAME
               value: "all"
@@ -27,6 +32,14 @@ spec:
           envFrom:
             - configMapRef:
                 name: app-config
+          # apps/dagster_app/dagster.yaml declares no run_storage/event_log_storage/
+          # schedule_storage, so Dagster defaults to SQLite files under DAGSTER_HOME —
+          # without a persistent mount here (matching Compose's dagster_home named
+          # volume), every pod restart/reschedule silently wiped all run history,
+          # materializations and schedules.
+          volumeMounts:
+            - name: dagster-home
+              mountPath: /opt/dagster/dagster_home
           resources:
             requests:
               cpu: 200m
@@ -34,6 +47,10 @@ spec:
             limits:
               cpu: 1000m
               memory: 1024Mi
+      volumes:
+        - name: dagster-home
+          persistentVolumeClaim:
+            claimName: dagster-home-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -47,3 +64,14 @@ spec:
       targetPort: 3000
   selector:
     app: dagster
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dagster-home-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

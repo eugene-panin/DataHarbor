@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# n8n.yaml lives in its own directory (not referenced directly as a bare
+# file from base/kustomization.yaml) so overlays/local-with-n8n can pull it
+# in as a proper nested kustomization. kustomize's file-based security
+# restrictor only allows a resource reference to reach outside a
+# kustomization's own root when that reference is itself a kustomization
+# directory (which gets its own root) — a bare "../../base/n8n.yaml" file
+# reference from local-with-n8n failed with "security; file ... is not in
+# or below ...".
+resources:
+  - n8n.yaml

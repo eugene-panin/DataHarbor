@@ -10,15 +10,22 @@ data:
   S3_SECRET_KEY: "minioadmin"
   S3_BUCKET_NAME: "dataharbor-raw"
   S3_REGION: "us-east-1"
-  DAGSTER_HOME: "/tmp/dagster_home"
+  DAGSTER_HOME: "/opt/dagster/dagster_home"
   QDRANT_URL: "http://qdrant-service:6333"
   QDRANT_API_KEY: ""
   QDRANT_COLLECTION: "dataharbor"
   QDRANT_VECTOR_SIZE: "512"
-  POSTGRES_HOST: "postgres-service"
+  # deploy/k8s/base/postgres.yaml's Service is named "postgres", not
+  # "postgres-service" — every other host here (seaweedfs-service,
+  # qdrant-service, clickhouse) already matches its own Service name; this
+  # one didn't, so every DB connection from inside the cluster failed DNS
+  # resolution.
+  POSTGRES_HOST: "postgres"
   POSTGRES_PORT: "5432"
   POSTGRES_DB: "dataharbor"
   POSTGRES_USER: "dataharbor"
   POSTGRES_PASSWORD: "dataharbor"
   CLICKHOUSE_HOST: "clickhouse"
   CLICKHOUSE_PORT: "8123"
+  GRAFANA_ADMIN_USER: "admin"
+  GRAFANA_ADMIN_PASSWORD: "admin123"

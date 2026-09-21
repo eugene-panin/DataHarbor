@@ -7,3 +7,5 @@ resources:
   - seaweedfs.yaml
   - clickhouse.yaml
   - qdrant.yaml
+  - demo_site.yaml
+  - grafana.yaml

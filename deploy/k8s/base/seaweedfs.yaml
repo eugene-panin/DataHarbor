@@ -21,6 +21,12 @@ spec:
           ports:
             - containerPort: 8333
             - containerPort: 9333
+          # -dir=/data had no volumeMount/PVC — every uploaded S3 object was
+          # lost on pod restart or reschedule, unlike every other stateful
+          # service here (postgres/clickhouse/qdrant all mount a PVC).
+          volumeMounts:
+            - name: seaweedfs-storage
+              mountPath: /data
           resources:
             requests:
               cpu: 100m
@@ -28,6 +34,10 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: seaweedfs-storage
+          persistentVolumeClaim:
+            claimName: seaweedfs-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -45,3 +55,14 @@ spec:
       targetPort: 9333
   selector:
     app: seaweedfs
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaweedfs-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

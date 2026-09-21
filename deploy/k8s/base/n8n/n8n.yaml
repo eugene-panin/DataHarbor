@@ -30,8 +30,15 @@ spec:
               value: "true"
             - name: N8N_INSTANCE_OWNER_EMAIL
               value: "admin@dataharbor.local"
+            # bcrypt for the local-dev default "admin123" (matches ADMIN_PASSWORD
+            # in .env.example, used the same way for Postgres/ClickHouse/Grafana).
+            # The hash this replaced didn't correspond to any documented password
+            # (verified: it doesn't match "admin123" or "admin") — no one deploying
+            # this manifest as shipped could actually log in. Regenerate after
+            # changing the password:
+            # python -c "import bcrypt; print(bcrypt.hashpw(b'YOUR_PASSWORD', bcrypt.gensalt()).decode())"
             - name: N8N_INSTANCE_OWNER_PASSWORD_HASH
-              value: "$2a$10$xTXrj1FtAz8bpHA8/OSA..91FlQixTy7xZfIm4nx5PLSfFTVKktm6"
+              value: "$2b$10$d8/hfxLWb7scTa2988WLPOYP7/qA0sfsIqf2Ht8jC1xPDT71KiBnK"
             - name: N8N_INSTANCE_OWNER_FIRST_NAME
               value: "Admin"
             - name: N8N_INSTANCE_OWNER_LAST_NAME
