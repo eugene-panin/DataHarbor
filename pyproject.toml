@@ -82,6 +82,16 @@ build-backend = "setuptools.build_meta"
 include = ["apps*", "bundles*", "extractors*"]
 exclude = ["tests*", "analysis*", "deploy*", "output*"]
 
+# Without this, `packages.find` above only pulls in .py files — every
+# extractor/bundle manifest.json, apps/dagster_app/dagster.yaml and
+# workspace_profiles.yaml, the Grafana provisioning *.yml, and the
+# ClickHouse users.d *.xml were silently missing from the built wheel.
+# A `pip install dataharbor` install (as opposed to running from a git
+# checkout) couldn't discover any extractor or bundle — every
+# manifest.json they're identified by was never shipped.
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.yaml", "*.yml", "*.xml"]
+
 [tool.uv]
 package = true
 
