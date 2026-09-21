@@ -46,14 +46,48 @@ class ExtractorRegistryTests(unittest.TestCase):
             require_extractor("definitely_missing_extractor_xyz")
 
     def test_domain_match_is_not_a_loose_substring(self):
-        """F17: `domain in host` let a k8s_docs domain like "github.com"
+        """F17: `domain in host` let a manifest domain like "github.com"
         match "github.com.evil-phishing.example" (lookalike prefix, attacker
         suffix) and "notgithub.com" (unrelated host containing the string),
-        silently routing scraped content through the wrong extractor."""
-        self.assertIsNone(get_extractor("https://github.com.evil-phishing.example/x"))
-        self.assertIsNone(get_extractor("https://notgithub.com/x"))
-        self.assertIsNotNone(get_extractor("https://github.com/x"))
-        self.assertIsNotNone(get_extractor("https://docs.github.com/x"))
+        silently routing scraped content through the wrong extractor.
+
+        Uses its own throwaway extractor rather than a real installed one —
+        every non-demo_site extractor is private/gitignored (see
+        .gitignore's `extractors/*` rule), so any test that depends on one
+        being present only ever passes on a machine that happens to have it
+        checked out locally, not in CI against a clean clone.
+        """
+        target_name = "zz_domain_match_ext"
+        target_path = os.path.join(EXTRACTORS_DIR, target_name)
+        if os.path.exists(target_path):
+            shutil.rmtree(target_path)
+        try:
+            os.makedirs(target_path)
+            with open(os.path.join(target_path, "manifest.json"), "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "name": target_name,
+                        "version": "0.1.0",
+                        "description": "domain-match test fixture",
+                        "domains": ["github.com"],
+                        "entrypoint": "extractor:parse",
+                    },
+                    f,
+                )
+            with open(os.path.join(target_path, "__init__.py"), "w", encoding="utf-8") as f:
+                f.write("")
+            with open(os.path.join(target_path, "extractor.py"), "w", encoding="utf-8") as f:
+                f.write("def parse(html, source_url):\n    return []\n")
+            clear_registry_cache()
+
+            self.assertIsNone(get_extractor("https://github.com.evil-phishing.example/x"))
+            self.assertIsNone(get_extractor("https://notgithub.com/x"))
+            self.assertIsNotNone(get_extractor("https://github.com/x"))
+            self.assertIsNotNone(get_extractor("https://docs.github.com/x"))
+        finally:
+            if os.path.exists(target_path):
+                shutil.rmtree(target_path)
+            clear_registry_cache()
 
     def test_parse_returns_source_url(self):
         parse_fn = require_extractor("demo_site")
