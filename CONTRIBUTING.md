@@ -67,6 +67,11 @@ Guidelines:
 - Describe *why*, not just *what*, in the PR description if the change isn't
   self-explanatory from the diff.
 - Link the issue it addresses, if any.
+- User-facing changes — a bug fix, a security fix, a behavior change, a new
+  CLI command/flag — get a short entry in [CHANGELOG.md](CHANGELOG.md) in
+  the same PR. Follow the existing format: one bullet, root cause/what
+  changed in a sentence, a link to the commit once it lands. Skip it for
+  pure refactors, test-only changes, or typo fixes — not every PR needs one.
 
 ## Reporting bugs / requesting features
 
