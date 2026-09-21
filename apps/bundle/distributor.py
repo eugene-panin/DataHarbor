@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -12,6 +13,8 @@ from apps.bundle.validator import BundleValidator
 
 logger = logging.getLogger(__name__)
 
+_SAFE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
 
 def _safe_extract_zip(zip_ref: zipfile.ZipFile, dest_dir: str) -> None:
     """Extract a zip archive, rejecting members that would escape ``dest_dir`` (zip-slip)."""
@@ -21,6 +24,21 @@ def _safe_extract_zip(zip_ref: zipfile.ZipFile, dest_dir: str) -> None:
         if member_path != dest_root and not member_path.startswith(dest_root + os.sep):
             raise ValueError(f"Archive member '{member}' would extract outside the target directory.")
     zip_ref.extractall(dest_root)
+
+
+def _sanitize_plugin_name(raw_name: str, fallback: str) -> str:
+    """Reject a manifest ``name`` that isn't a safe directory-name identifier.
+
+    ``manifest.json`` is untrusted content from the source being installed — using
+    its ``name`` field as a path component without validation lets a crafted value
+    like ``"../../etc/cron.d/evil"`` install outside ``bundles_dir``.
+    """
+    candidate = (raw_name or "").replace("-", "_").strip()
+    if _SAFE_NAME_RE.match(candidate):
+        return candidate
+    safe_fallback = (fallback or "custom_bundle").replace("-", "_")
+    logger.warning(f"Manifest name {raw_name!r} is not a safe identifier; using {safe_fallback!r} instead.")
+    return safe_fallback if _SAFE_NAME_RE.match(safe_fallback) else "custom_bundle"
 
 
 class BundleDistributor:
@@ -121,7 +139,7 @@ class BundleDistributor:
                 with open(manifest_path, encoding="utf-8") as f:
                     mdata = json.load(f)
 
-                bundle_name = mdata.get("name", "custom_bundle").replace("-", "_")
+                bundle_name = _sanitize_plugin_name(mdata.get("name", ""), "custom_bundle")
                 target_path = os.path.join(self.bundles_dir, bundle_name)
 
                 if os.path.exists(target_path):
@@ -143,7 +161,7 @@ class BundleDistributor:
                 with open(manifest_path, encoding="utf-8") as f:
                     mdata = json.load(f)
 
-                bundle_name = mdata.get("name", os.path.basename(source)).replace("-", "_")
+                bundle_name = _sanitize_plugin_name(mdata.get("name", ""), os.path.basename(source))
                 target_path = os.path.join(self.bundles_dir, bundle_name)
 
                 if os.path.exists(target_path):

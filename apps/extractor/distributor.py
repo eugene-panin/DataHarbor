@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -14,6 +15,33 @@ from apps.extractor.paths import EXTRACTORS_DIR
 from apps.extractor.validator import ExtractorValidator
 
 logger = logging.getLogger(__name__)
+
+_SAFE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _safe_extract_zip(zip_ref: zipfile.ZipFile, dest_dir: str) -> None:
+    """Extract a zip archive, rejecting members that would escape ``dest_dir`` (zip-slip)."""
+    dest_root = os.path.realpath(dest_dir)
+    for member in zip_ref.namelist():
+        member_path = os.path.realpath(os.path.join(dest_root, member))
+        if member_path != dest_root and not member_path.startswith(dest_root + os.sep):
+            raise ValueError(f"Archive member '{member}' would extract outside the target directory.")
+    zip_ref.extractall(dest_root)
+
+
+def _sanitize_plugin_name(raw_name: str, fallback: str) -> str:
+    """Reject a manifest ``name`` that isn't a safe directory-name identifier.
+
+    ``manifest.json`` is untrusted content from the source being installed — using
+    its ``name`` field as a path component without validation lets a crafted value
+    like ``"../../etc/cron.d/evil"`` install outside ``extractors_dir``.
+    """
+    candidate = (raw_name or "").replace("-", "_").strip()
+    if _SAFE_NAME_RE.match(candidate):
+        return candidate
+    safe_fallback = (fallback or "custom_extractor").replace("-", "_")
+    logger.warning(f"Manifest name {raw_name!r} is not a safe identifier; using {safe_fallback!r} instead.")
+    return safe_fallback if _SAFE_NAME_RE.match(safe_fallback) else "custom_extractor"
 
 
 class ExtractorDistributor:
@@ -82,10 +110,10 @@ class ExtractorDistributor:
 
                 if source.endswith(".zip"):
                     with zipfile.ZipFile(source, "r") as zip_ref:
-                        zip_ref.extractall(temp_extract)
+                        _safe_extract_zip(zip_ref, temp_extract)
                 else:
                     with tarfile.open(source, "r:*") as tar_ref:
-                        tar_ref.extractall(temp_extract)
+                        tar_ref.extractall(temp_extract, filter="data")
 
                 extracted_entries = [e for e in os.listdir(temp_extract) if not e.startswith(".")]
                 if len(extracted_entries) == 1 and os.path.isdir(
@@ -103,7 +131,7 @@ class ExtractorDistributor:
                 with open(manifest_path, encoding="utf-8") as f:
                     mdata = json.load(f)
 
-                extractor_name = mdata.get("name", "custom_extractor").replace("-", "_")
+                extractor_name = _sanitize_plugin_name(mdata.get("name", ""), "custom_extractor")
                 target_path = os.path.join(self.extractors_dir, extractor_name)
                 if os.path.exists(target_path):
                     if not force:
@@ -125,7 +153,7 @@ class ExtractorDistributor:
                 with open(manifest_path, encoding="utf-8") as f:
                     mdata = json.load(f)
 
-                extractor_name = mdata.get("name", os.path.basename(source)).replace("-", "_")
+                extractor_name = _sanitize_plugin_name(mdata.get("name", ""), os.path.basename(source))
                 target_path = os.path.join(self.extractors_dir, extractor_name)
                 if os.path.exists(target_path):
                     if not force:

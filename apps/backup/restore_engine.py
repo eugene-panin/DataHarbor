@@ -91,7 +91,7 @@ class MasterRestoreEngine:
 
         s3_temp_dir = os.path.join(temp_dir, "s3_raw_extracted")
         with tarfile.open(s3_tar_path, "r:gz") as tar:
-            tar.extractall(path=s3_temp_dir)
+            tar.extractall(path=s3_temp_dir, filter="data")
 
         client = get_s3_client()
         bucket_name = os.getenv("S3_BUCKET_NAME", "dataharbor-raw")
@@ -121,7 +121,7 @@ class MasterRestoreEngine:
             return
 
         with tarfile.open(bundles_tar_path, "r:gz") as tar:
-            tar.extractall(path=PROJECT_ROOT)
+            tar.extractall(path=PROJECT_ROOT, filter="data")
         logger.info("Successfully restored custom bundles and .env file.")
 
     def restore_master_backup(self):
@@ -132,7 +132,7 @@ class MasterRestoreEngine:
 
         try:
             with tarfile.open(self.archive_path, "r:gz") as tar:
-                tar.extractall(path=temp_work_dir)
+                tar.extractall(path=temp_work_dir, filter="data")
 
             self.restore_postgresql(temp_work_dir)
             self.restore_clickhouse(temp_work_dir)

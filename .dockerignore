@@ -8,3 +8,9 @@ scratch
 downloads
 .dagster
 dagster_home
+
+# Never bake local secrets/credentials or backup archives into the image.
+.env
+.env.local
+backups
+*.bak
