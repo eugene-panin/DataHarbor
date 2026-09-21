@@ -26,3 +26,25 @@ class HttpFetcherProxyPolicyTests(TestCase):
 
         self.assertEqual(result["status"], 404)
         self.assertIn("missing", result["content"])
+
+    def test_use_proxy_false_overrides_environment_proxy(self):
+        """F21: without an explicit ProxyHandler({}), build_opener()'s own
+        default handlers include one that reads http_proxy/https_proxy from
+        the environment — so use_proxy=False (or simply no proxies
+        configured) did not actually stop the request from going through
+        whatever proxy the OS/shell happened to have set."""
+        from urllib.request import ProxyHandler
+
+        scraper = HttpFetcher(use_proxy=False)
+        with (
+            patch.dict("os.environ", {"http_proxy": "http://evil-proxy.invalid:1234"}),
+            patch("apps.scraper.http_fetcher.build_opener") as build_opener,
+        ):
+            build_opener.return_value.open.side_effect = RuntimeError("stop before real network I/O")
+            with self.assertRaises(RuntimeError):
+                scraper.fetch("https://example.com")
+
+        args, _kwargs = build_opener.call_args
+        proxy_handlers = [a for a in args if isinstance(a, ProxyHandler)]
+        self.assertEqual(len(proxy_handlers), 1, "build_opener() must be given an explicit ProxyHandler")
+        self.assertEqual(proxy_handlers[0].proxies, {}, "the explicit ProxyHandler must carry no proxies")

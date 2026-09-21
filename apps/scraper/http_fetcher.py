@@ -82,8 +82,13 @@ class HttpFetcher:
             if self.proxies:
                 opener = build_opener(ProxyHandler(self.proxies), redirect_recorder)
             else:
+                # build_opener()'s own default handlers include a ProxyHandler
+                # that reads http_proxy/https_proxy/etc. from the environment
+                # — so "no proxies configured" was silently routing through
+                # whatever proxy the OS/shell happened to have set, even with
+                # use_proxy=False. ProxyHandler({}) overrides that with none.
                 context = ssl.create_default_context()
-                opener = build_opener(HTTPSHandler(context=context), redirect_recorder)
+                opener = build_opener(ProxyHandler({}), HTTPSHandler(context=context), redirect_recorder)
             response = opener.open(req, timeout=timeout)
 
             with response:
