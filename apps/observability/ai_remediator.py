@@ -36,16 +36,32 @@ def _jsonable(value: Any) -> Any:
 class LLMProviderGateway:
     """Model-Agnostic LLM Provider Gateway supporting Gemini, DeepSeek, OpenAI, Anthropic, and Ollama."""
 
+    # Each provider reads its OWN key and has its OWN default model — picking
+    # AI_REPAIR_PROVIDER=openai must never end up sending a leftover
+    # GEMINI_API_KEY (or the Gemini default model name) to OpenAI's API.
+    _PROVIDER_KEY_ENV = {
+        "gemini": "GEMINI_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+    }
+    _PROVIDER_DEFAULT_MODEL = {
+        "gemini": "gemini-1.5-flash",
+        "openai": "gpt-4o-mini",
+        "deepseek": "deepseek-chat",
+        "anthropic": "claude-3-5-sonnet-20241022",
+        "ollama": "qwen2.5-coder:7b",
+    }
+
     def __init__(self):
         self.provider = os.getenv("AI_REPAIR_PROVIDER", "gemini").lower()
-        self.api_key = (
-            os.getenv("AI_REPAIR_API_KEY") or 
-            os.getenv("GEMINI_API_KEY") or 
-            os.getenv("DEEPSEEK_API_KEY") or 
-            os.getenv("OPENAI_API_KEY") or 
-            os.getenv("ANTHROPIC_API_KEY") or ""
+        provider_key_env = self._PROVIDER_KEY_ENV.get(self.provider)
+        self.api_key = os.getenv("AI_REPAIR_API_KEY") or (
+            os.getenv(provider_key_env, "") if provider_key_env else ""
         )
-        self.model = os.getenv("AI_REPAIR_MODEL", "gemini-1.5-flash")
+        self.model = os.getenv("AI_REPAIR_MODEL") or self._PROVIDER_DEFAULT_MODEL.get(
+            self.provider, "gemini-1.5-flash"
+        )
         self.ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
     def query_provider(self, prompt: str) -> str:
@@ -92,7 +108,7 @@ class LLMProviderGateway:
         url = f"{base_url}/chat/completions"
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         payload = {
-            "model": self.model if self.provider == "openai" else "deepseek-chat",
+            "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2
         }
@@ -114,7 +130,7 @@ class LLMProviderGateway:
         url = "https://api.anthropic.com/v1/messages"
         headers = {"x-api-key": self.api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}
         payload = {
-            "model": self.model if "claude" in self.model else "claude-3-5-sonnet-20241022",
+            "model": self.model,
             "max_tokens": 4000,
             "messages": [{"role": "user", "content": prompt}]
         }
@@ -131,8 +147,7 @@ class LLMProviderGateway:
     def _call_ollama(self, prompt: str) -> str:
         """Queries local Ollama instance (100% free local execution on Apple Silicon Mac)."""
         url = f"{self.ollama_host}/api/generate"
-        model_name = self.model if self.model != "gemini-1.5-flash" else "qwen2.5-coder:7b"
-        payload = {"model": model_name, "prompt": prompt, "stream": False}
+        payload = {"model": self.model, "prompt": prompt, "stream": False}
         try:
             res = requests.post(url, json=payload, timeout=60)
             if res.status_code == 200:
