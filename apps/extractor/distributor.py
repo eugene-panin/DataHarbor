@@ -101,9 +101,33 @@ class ExtractorDistributor:
                 source.endswith(".git")
                 or (source.startswith(("http://", "https://", "git@")) and not source.endswith((".zip", ".tar.gz", ".tgz")))
             ):
-                extractor_name = source.rstrip("/").split("/")[-1].replace(".git", "").replace("-", "_")
+                # Clone to an anonymous temp dir first — the canonical
+                # extractor id comes from manifest.json's "name" (this is
+                # what the registry actually loads Python modules by; see
+                # apps/scraper/extractors/registry.py), not from parsing the
+                # repo URL. `harbor extractor publish` suggests repo names
+                # like "dh-extractor-<name>"; deriving the installed
+                # directory from that instead of the manifest silently
+                # installs it under a different id than the registry expects
+                # — "installed successfully" followed by "extractor not
+                # found" at load time.
+                clone_temp = os.path.join(self.extractors_dir, "_git_clone_temp")
+                if os.path.exists(clone_temp):
+                    shutil.rmtree(clone_temp)
+                subprocess.check_call(["git", "clone", source, clone_temp])
+
+                manifest_path = os.path.join(clone_temp, "manifest.json")
+                if not os.path.exists(manifest_path):
+                    shutil.rmtree(clone_temp)
+                    raise ValueError(f"Cloned repository is missing 'manifest.json': {source}")
+                with open(manifest_path, encoding="utf-8") as f:
+                    mdata = json.load(f)
+
+                url_basename = source.rstrip("/").split("/")[-1].replace(".git", "").replace("-", "_")
+                extractor_name = _sanitize_plugin_name(mdata.get("name", ""), url_basename)
                 target_path = os.path.join(self.extractors_dir, extractor_name)
                 if os.path.exists(target_path) and not force:
+                    shutil.rmtree(clone_temp)
                     raise ValueError(
                         f"Extractor '{extractor_name}' is already installed at {target_path}. "
                         "Use --force to overwrite."
@@ -111,7 +135,7 @@ class ExtractorDistributor:
                 staging_path = f"{target_path}__staging"
                 if os.path.exists(staging_path):
                     shutil.rmtree(staging_path)
-                subprocess.check_call(["git", "clone", source, staging_path])
+                shutil.move(clone_temp, staging_path)
 
             elif os.path.isfile(source) and source.endswith((".tar.gz", ".tgz", ".zip")):
                 temp_extract = os.path.join(self.extractors_dir, "_temp_extract")
