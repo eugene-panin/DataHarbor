@@ -51,7 +51,11 @@ services:
       - DATACENTER_PROXY_LIST=${DATACENTER_PROXY_LIST:-}
       - DAGSTER_HOME=/opt/dagster/dagster_home
       - DAGSTER_WORKSPACE_NAME=${DAGSTER_WORKSPACE_NAME:-all}
-      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
+      # Hardcoded like S3_ENDPOINT_URL/CLICKHOUSE_HOST above, not interpolated
+      # from .env: this container reaches Qdrant via the compose network's
+      # "qdrant" DNS name, not whatever host-CLI-facing value .env carries
+      # (127.0.0.1 inside this container is the container itself, not Qdrant).
+      - QDRANT_URL=http://qdrant:6333
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       - QDRANT_COLLECTION=${QDRANT_COLLECTION:-dataharbor}
       - CLICKHOUSE_HOST=clickhouse

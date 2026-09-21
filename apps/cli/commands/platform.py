@@ -164,10 +164,17 @@ def up(
                 tilt_env = os.environ.copy()
                 if with_n8n:
                     tilt_env["ENABLE_N8N"] = "1"
-                subprocess.run(["tilt", "up"], check=True, env=tilt_env)
+                subprocess.run(["tilt", "up"], check=True, env=tilt_env, cwd=PROJECT_ROOT)
                 return
 
         if env == "compose":
+            # cwd=PROJECT_ROOT (here and on every docker/tilt subprocess in this
+            # file): without it, `harbor up`/`down` run relative to wherever the
+            # caller's shell happens to be. `docker compose`/`tilt` derive their
+            # project name from the CURRENT directory, so running from a
+            # different cwd than last time could target a second, disconnected
+            # stack (or fail to find docker-compose.yml/Tiltfile at all)
+            # instead of the one `harbor` is supposed to always manage.
             cmd = ["docker", "compose"]
             if with_n8n:
                 from pathlib import Path
@@ -177,7 +184,7 @@ def up(
                     print(f"📎 {note}")
                 cmd.extend(["--profile", "n8n"])
             cmd.extend(["up", "-d"])
-            subprocess.run(cmd, check=True)
+            subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
             print("✨ DataHarbor services started in background via Docker Compose!")
             if with_n8n:
                 print("📎 Optional n8n profile enabled (http://localhost:56780).")
@@ -198,11 +205,25 @@ def down(
     """Stop DataHarbor platform services."""
     print("\n🛑 Stopping DataHarbor Platform Services...")
     print("=" * 60)
+    # Pick the runtime that's ACTUALLY running, not just "is tilt on PATH":
+    # forgetting to pass --compose (which up/down don't remember between
+    # invocations) used to run `tilt down` whenever the tilt binary merely
+    # happened to be installed, silently leaving a real Compose stack up
+    # with no error — `tilt down` has nothing to do with those containers.
+    active_runtime = check_active_runtime()
+    if compose:
+        use_compose = True
+    elif active_runtime == "KUBERNETES":
+        use_compose = False
+    elif active_runtime == "DOCKER_COMPOSE":
+        use_compose = True
+    else:
+        use_compose = not shutil.which("tilt")
     try:
-        if compose or not shutil.which("tilt"):
-            subprocess.run(["docker", "compose", "down"], check=True)
+        if use_compose:
+            subprocess.run(["docker", "compose", "down"], check=True, cwd=PROJECT_ROOT)
         else:
-            subprocess.run(["tilt", "down"], check=True)
+            subprocess.run(["tilt", "down"], check=True, cwd=PROJECT_ROOT)
         print("✨ DataHarbor services stopped successfully.\n")
     except FileNotFoundError as e:
         print(f"❌ '{e.filename}' not found on PATH. Install Docker (and Docker Compose) first.")
